@@ -1,0 +1,8 @@
+# Generated pre-bootstrap placeholder owned by AI 3 once it exists.
+# AI 1 must never commit this file. See docs/handoffs/ai1.md.
+/src/contracts.ts
+
+# Renderer evidence captures: regenerate with node tests/render/capture.mjs
+/tests/render/captures/
+
+node_modules/
