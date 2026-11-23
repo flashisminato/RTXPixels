@@ -1,0 +1,8 @@
+# AI 3 — BOOTSTRAP READY
+
+1. Branch: main, exact baseline commit: resolve `git rev-parse bootstrap-v1` (tag created immediately after this commit). Contract v1. No team remote supplied or configured.
+2. Files: package/lock/runtime/CI configuration, exact shared contracts and brief, original preset, core signatures, initial state, main shell, initial render/UI/style stubs, tests, notices and ownership documentation. Dependencies: Vite 8.3.8, TypeScript 5.9.3, @types/node 26.6.6, all development-only.
+3. Working: compilable shell and independent preset values. Renderer explicitly throws “not implemented”; core functions deliberately throw; no fabricated image/inspection. Full UI, GPU, reference math, fallback and browser checks remain.
+4. Executed: `npm install` (18 packages, zero audit findings at installation); `npm run typecheck` PASS; `npm test` PASS (2 bootstrap tests); `npm run build` PASS. Browser/device checks not run at this checkpoint. Tested Node 26.4.0 / npm 11.17.0.
+5. Both humans clone the SAME portable baseline bundle, then AI 1 creates feature/renderer and AI 2 creates feature/ui at bootstrap-v1. AI 3 continues on integration/core. Commands: `npm ci`, `npm run dev`, `npm run typecheck`, `npm test`, `npm run build`, `npm run preview`. Renderer/UI ownership now transfers: AI 3 will not edit their files. Host and new team remote remain human decisions; neither blocks local implementation. No publication has occurred.
+6. No upstream code adapted. Inspiration URL and Kia Preston credit are in README and public notices. Incoming adaptations require their own source/function records and full upstream MIT text.
