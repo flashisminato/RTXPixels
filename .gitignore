@@ -5,3 +5,6 @@ dist/
 .DS_Store
 coverage/
 test-results/
+
+# Renderer evidence captures: regenerate with node tests/render/capture.mjs
+/tests/render/captures/

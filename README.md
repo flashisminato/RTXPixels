@@ -2,11 +2,11 @@
 
 An original educational web experiment: **How does a game decide what a mirror shows?**
 
-## Current checkpoint: CPU reference and integration ready
+## Current checkpoint: WebGL renderer and CPU core integrated
 
-The app displays a real, locally calculated **160×90 CPU fallback** with spheres, planes, a perfect mirror, direct matte lighting and hard shadows. Click the image to inspect the actual ray events, inspect a computed mirror example, or reset. No API keys or runtime services.
+The app renders the original room through **AI 1's real WebGL2 renderer**, capped at 640×360, with spheres, planes, a perfect mirror, direct matte lighting and hard shadows. A cancelable **160×90 CPU fallback** handles unavailable or lost graphics contexts. Both buffers fit the host aspect. Click the image to inspect actual CPU ray events for the same frame, select a computed mirror example, or reset. No API keys or runtime services.
 
-**Not a finished team release:** AI 1's WebGL renderer and AI 2's full controls/explanatory diagram have not arrived. Their bootstrap stubs remain unchanged. The development harness labels this explicitly; the image itself is computed, not a placeholder. Contract **v1**: no glass.
+**Not a finished team release:** AI 2's full controls/explanatory diagram has not arrived; its minimal development harness is preserved. The renderer is no longer a stub. Contract **v1** remains unchanged: no glass.
 
 ## Run and verify
 
@@ -15,14 +15,15 @@ Tested runtime: Node **26.4.0**, npm **11.17.0**. Use `nvm install && nvm use`; 
 ```sh
 npm ci
 npm run dev
-npm run check       # typecheck + all TypeScript tests + production build
+npm run check       # all-source typecheck + Node core/integration tests + build
 npm run preview
-npm run test:browser
+npm run test:renderer # AI 1's browser-only GPU suite and production smoke
+npm run test:browser  # combined application, CPU/GPU parity and fallback
 ```
 
 `test:browser` builds fresh output and uses installed Google Chrome through `playwright-core`. For another installation, set `CHROME_PATH` to its executable. No browser is downloaded automatically. The browser suite starts/stops its own local servers and isolated browser contexts. It is separate from CI's portable math/build gate.
 
-Latest verification: **31 numerical/state/integration tests and 7 browser tests passed**, plus typecheck and build. See [verification](docs/verification.md) for the exact scope, fixtures, and important limits. Browser tests currently target the bootstrap harness; their selectors must be updated when AI 2's real interface is integrated.
+Latest verification: **31 numerical/state/integration tests, 26 renderer checks, 11 renderer production-smoke checks and 10 combined-browser tests passed**, plus typecheck and build. The combined suite includes 630 sampled CPU/GPU pixel/diagnostic comparisons at DPR 1 and 2 on SwiftShader. AI 1's standalone renderer suite also passed on ANGLE Metal / Apple M1. See [verification](docs/verification.md) for scope and limits. Node and browser-only renderer tests have separate commands; both are typechecked. Browser selectors must be updated when AI 2's real interface is integrated.
 
 ## Structure
 
@@ -32,16 +33,18 @@ Latest verification: **31 numerical/state/integration tests and 7 browser tests 
 - `src/state/`: validated actions, immutable snapshots and monotonic scene versions.
 - `src/fallback/`: cancelable, event-free bulk CPU rendering.
 - `src/main.ts`: canvas ownership, scheduling, resize, inspection and fallback orchestration.
-- `src/render/`: AI 1 ownership; currently an honest throwing stub.
+- `src/render/`: AI 1's real WebGL2 implementation, preserved unchanged from the existing main branch.
 - `src/ui/`, `src/styles/`: AI 2 ownership; currently a minimal development harness.
 
 Read [architecture](docs/architecture.md), [the shared contract](docs/contract-v1.md), [ownership](docs/ownership.md), and [integration notes](docs/integration-v1.md).
 
 ## Team workflow
 
-Both feature accounts start at **the same** `bootstrap-v1` commit: `3cf5dcdd1e13331e547f9e59014572e645ce0af3`. AI 1 works on `feature/renderer`; AI 2 on `feature/ui`. AI 3 developed this checkpoint on `integration/core`, then fast-forwarded local `main`. The `core-v1` tag identifies the integrated checkpoint; the delivered handoff gives its exact hash.
+Team repository: [flashisminato/Ray-Tracking](https://github.com/flashisminato/Ray-Tracking).
 
-Clone a portable bundle with `git clone --branch main <bundle> <new-checkout>`. Existing feature branches must update from the same integration commit, not overwrite their checkout with a returned archive. Only AI 3 integrates reviewed owned-file changes into main. No remote is configured, and nothing has been pushed. Never use the reference repository as a write remote.
+The merge joins the existing renderer history at `2746fb1` and AI 3's `integration/core` checkpoint at `6bc55c3`, preserving both histories. It was prepared in a separate `integration/combined` checkout. The original `bootstrap-v1` and `core-v1` tags remain historical checkpoints, not tags for the combined app.
+
+Both feature accounts should fetch and update their feature branches from the same integrated `main` commit before their next handoff. Do not overwrite an entire checkout or merge an old renderer stub over real code. Only AI 3 integrates reviewed owned-file changes into main. Never use the reference repository as a write remote.
 
 ## Deployment
 
@@ -51,4 +54,18 @@ Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs
 
 Inspired by [Light Teachings by Kia Preston (pkncoder)](https://github.com/pkncoder/Light-Teachings/tree/57260fe2a6badbc826271856bbcf6c8a2090de17). AI 3 did not copy or adapt upstream source; this implementation follows the supplied mathematical contract. Incoming adaptations must preserve the full upstream MIT text and identify source commits/functions. See [contribution record](docs/contributions.md) and [public credits](public/notices/credits.html).
 
-No GPU parity, second-device verification, full keyboard pixel selection, first-user study, deployed-host test or organizer/deadline verification is claimed. See the [release checklist and demo guide](docs/release.md).
+Sampled CPU/GPU parity is verified on headless SwiftShader, not universally across hardware/drivers. Second-device verification, full keyboard pixel selection, a first-user study, deployed-host testing and organizer/deadline verification remain outstanding. See the [release checklist and demo guide](docs/release.md).
+
+## Repository license
+
+The existing repository notice is preserved verbatim below. This is separate from the upstream inspiration credit.
+
+# Ray-Tracking
+This software uses MIT license:
+Copyright (c) <2026> <Keteris>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Ray-Tracking"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

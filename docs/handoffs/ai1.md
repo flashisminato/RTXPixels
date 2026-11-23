@@ -2,23 +2,27 @@
 
 Owner: AI 1 (graphics). Owned paths: `src/render/**`, `tests/render/**`, this file.
 
-## Checkpoint 3 — INTEGRATED ON core-v1, CPU/GPU PARITY VERIFIED
+## Checkpoint 3 — INTEGRATED, MERGED WITH main, CPU/GPU PARITY VERIFIED
 
 ### 1. Branch, commits, contract
 
 | | |
 |---|---|
 | Branch | `feature/renderer-core` |
-| Base | `6bc55c3` = tag `core-v1` (AI 3's `integration/core`) |
-| Contract | v1, unchanged. AI 3's `src/contracts.ts` is used as-is. |
+| Built on | `6bc55c3` = tag `core-v1` |
+| Merged with | `main` @ `484a761` (AI 3's "Merge AI 3 core into main…") |
+| Contract | v1, unchanged; AI 3's `src/contracts.ts` used as-is |
 
-This branch contains **only AI 1-owned paths** on top of `core-v1`. It replaces AI 3's
-renderer stub, exactly as the bootstrap intended. Merging it is a normal merge.
+`main` is an ancestor of this branch, so **merging it into `main` is a fast-forward.**
+Relative to `main`, it changes **only AI 1-owned paths**. That was checked
+mechanically against `git diff origin/main`.
 
-**Superseded:** the older `feature/renderer` (`d2f13c1`) was built before the bootstrap
-existed, on a different root commit. It was merged into `main` by PR #1. Note that
-`main` and `integration/core` currently share **no common ancestor**; how the two
-histories are joined is the integrator's decision (see §5).
+The merge conflicts were all inside AI 1 paths: `main` held my checkpoint-2 files and
+this branch holds their replacements. Before resolving, I verified that every one of
+those 12 files on `main` was byte-identical to my old commit `d2f13c1`. AI 3 had
+changed none of them, so taking the new versions drops nothing of AI 3's.
+
+The older `feature/renderer` branch is superseded by this one.
 
 ### 2. Changed files, dependencies, configuration
 
@@ -29,122 +33,104 @@ src/render/uniforms.ts              validation and explicit uniform packing
 src/render/constants.ts             re-exports contract constants + GPU codes
 src/render/shaders/trace.frag.ts    the tracer (GLSL ES 3.00)
 src/render/shaders/fullscreen.vert.ts
-tests/render/uniforms.test.ts       Node unit suite, runs in `npm test` / CI
+tests/render/uniforms.test.ts       Node unit suite (packing, validation, shader gen)
 tests/render/conformance.ts         compile-time pin of the 2-arg contract signature
-tests/render/gpu.browser.mjs        browser suite (Vite dev + playwright-core)
+tests/render/gpu.browser.mjs        browser suite (project Vite + playwright-core)
 tests/render/renderer.gpu.ts        26 hand-derived GPU checks
+tests/render/run.mjs, smoke.mjs     delegators, so `npm run test:renderer` still works
 tests/render/{gpu,smoke,capture}.html + *-entry.ts, harness.ts, fixtures.ts, png.mjs
 docs/handoffs/ai1.md
 ```
 
-**No dependency or config change.** The browser suite uses the project's own Vite and
-`playwright-core`. The earlier esbuild runner and the pre-bootstrap contract
-placeholder were deleted. Artifacts go to `test-results/render/`, already ignored.
+Removed (obsolete): `renderer.test.ts` (renamed to `renderer.gpu.ts`, so Node's
+`*.test.ts` glob can't run a browser-only file), `capture.mjs` (folded into the
+suite), and the pre-bootstrap placeholder `contract-v1.types.ts` /
+`prepare-contracts.mjs`.
 
-Optional request: a script `"test:render": "node --test tests/render/gpu.browser.mjs"`.
+**No dependency or config change.** Your existing `test:renderer` script works
+unchanged: `run.mjs` and `smoke.mjs` now delegate to the new suite as two
+non-overlapping halves, 6 + 10 = all 16 checks, each run once.
 
 ### 3. Working behaviour
 
 WebGL2 renderer behind `createRenderer(canvas, hooks).draw(frame)`. It handles spheres
-and planes, nearest hit with the contract tie rule, matte shading, hard shadows,
-perfect mirrors with a 0–4 redirect budget, and the beauty/hit/albedo modes with their
-distinct colour pipelines. It also covers context loss and restore, idempotent
-dispose, and scene validation that rejects bad input before upload. It uses AI 3's
-camera basis verbatim and never derives its own.
+and planes, nearest hit with the tie rule, matte shading, hard shadows, perfect mirrors
+with a 0–4 redirect budget, and the beauty/hit/albedo modes with their distinct colour
+pipelines. It also covers context loss and restore, idempotent dispose, validation
+before upload, and your camera basis used verbatim.
 
-In the integrated app: `main.ts` reaches `ready: WebGL frame drawn` at 640×360,
-at both DPR 1 and 2, with zero renderer warnings.
+The debug API your `gpu-parity.ts` uses is unchanged: `{ debug, preserveDrawingBuffer }`,
+`setDebugMode`, `DEBUG_OFF / DEBUG_NORMAL / DEBUG_IDS`, `.gl`, and the same ID and normal
+encodings.
 
-### 4. Checks actually run
+### 4. Checks actually run (on the merged tree)
 
-Node 26.4.0 / npm 11.17.0 (matches `.nvmrc`), macOS, headless Chrome 158.
+Node 26.4.0 / npm 11.17.0 (matches `.nvmrc`), macOS, headless Chrome 158, after `npm ci`.
 
 | Check | Result |
 |---|---|
-| `npm run check` (= CI: typecheck, unit, build) | **38/38** (AI 3's 31 + 7 renderer), typecheck and build pass |
-| `node --test tests/render/gpu.browser.mjs` | **16/16** across both implementations below |
-| GPU implementations | ANGLE **Metal, Apple M5** (hardware) and **SwiftShader** (software) |
+| `npm run check` (= CI) | pass: typecheck, **31/31**, build. The renderer's unit tests are not in your glob; see §5 |
+| Your glob + `"tests/render/*.test.ts"` | **38/38** |
+| `npm run test:browser` (yours, with the real renderer) | **10/10**. Your parity check: **max byte difference 0**, DPR 1 and 2 |
+| `npm run test:renderer` | **16/16**, on ANGLE **Metal (Apple M5)** and **SwiftShader** |
 
-The browser suite includes:
+The renderer suite includes:
 
-- **Full-frame CPU/GPU parity inside the real app.** Every pixel of the WebGL image
-  is compared against AI 3's CPU tracer in 15 control states: all view modes, mirror
-  and matte, redirects 0/1/4, and every slider at both extremes. That's 230,400 px
-  per state, on both implementations. **Max difference: 1/255. Edge mismatches: 0.**
-- **Production screenshot parity.** The production renderer is untouched, and its
-  composited screenshot is compared against the CPU. This is what a visitor actually
-  sees. Max difference: 1/255.
-- **Mutation-tested.** A half-pixel camera offset and a broken shadow test were both
-  injected deliberately, and both failed the parity check on the first frame. A 2%
-  tone-curve error was *not* caught, which is correct: it changes output by at most
-  about 1 byte, below 8-bit precision.
-- The 26 hand-derived checks, production-path smoke, a PNG-decoder self-test, and
-  evidence captures.
-
-**Frame cost** at 640×360, worst case (mirror, 4 redirects). These are synchronous
-upper bounds (draw plus forced GPU finish, 120 frames):
-
-| Implementation | median | p95 |
-|---|---|---|
-| Apple M5 (Metal) | 0.4 ms | ≤ 1.8 ms |
-| SwiftShader (software) | 6.1 ms | ≤ 8.5 ms |
+- **Full-frame CPU/GPU parity inside the real app.** Every pixel is compared against
+  your CPU tracer in 15 control states: every view mode, mirror and matte, redirects
+  0/1/4, and every slider at both extremes. That's 230,400 px per state, on both
+  implementations. **Max difference 1/255, zero edge mismatches.**
+- **Production screenshot parity.** The renderer is untouched, and its composited
+  screenshot is compared against the CPU. This is what a visitor sees. Max 1/255.
+- **Mutation-tested.** A deliberate half-pixel camera offset and a deliberately broken
+  shadow test both fail on the first frame. The edge allowance (0.05%) was calibrated
+  from those mutations.
+- **Frame cost** at 640×360, worst case (mirror, 4 redirects). These are synchronous
+  upper bounds: M5 median **0.4 ms**, p95 ≤ 1.8 ms; SwiftShader median **6.1 ms**,
+  p95 ≤ 8.5 ms.
 
 **Not run:** Safari, Firefox, mobile GPUs, a second physical device, AI 2's real UI
-(still AI 3's stub), and a deployed URL.
+(still your stub), and a deployed URL.
 
 ### 5. Next integration actions and precise requests
 
 **For AI 3:**
 
-1. **Merge `feature/renderer-core` into `integration/core`.** It touches AI 1 paths only.
-2. **Your browser smoke needs a 16-line change after the merge.** Tests 1–4 wait for the CPU
-   fallback, which only happened because the stub threw. With the real renderer the
-   app correctly goes `ready`, and they time out. I measured **3/7 passing**. The patch
-   below disables WebGL2 inside those four pages. That works for the bundled preview,
-   where module routes can't intercept `src/render`, and it exercises the genuine
-   "no WebGL2" fallback through the renderer's `ContextCreationError`. I applied it,
-   **verified 7/7**, and reverted it; it's your file to commit.
-
-   ```diff
-   @@ after `const waitFallback = ...`
-   +async function forceCpu(page) {
-   +  await page.addInitScript(() => {
-   +    const original = HTMLCanvasElement.prototype.getContext;
-   +    HTMLCanvasElement.prototype.getContext = function (type, ...rest) {
-   +      return type === 'webgl2' ? null : original.call(this, type, ...rest);
-   +    };
-   +  });
-   +}
-   @@ first line inside withPage(...) of tests 1, 2, 3 and 4
-   +    await forceCpu(page);
-   @@ test 1
-   -    assert.match(await page.locator('[role=status]').textContent(), /awaiting AI 1/);
-   +    assert.match(await page.locator('[role=status]').textContent(), /Could not create a WebGL2 context/);
-   ```
-
-3. **Decide one shadow rule (contract owner's call).** CPU counts a blocker at
+1. **Fast-forward `main` to `feature/renderer-core`.**
+2. **Widen `npm test` so CI runs the renderer's unit tests:**
+   `"test": "node --test \"tests/core/*.test.ts\" \"tests/integration/*.test.ts\" \"tests/render/*.test.ts\""`.
+   You excluded `tests/render` because my old browser-only file was named `*.test.ts`.
+   It's renamed now, and I verified this exact command at 38/38.
+3. Optional cleanups in your files:
+   - `test:renderer` could become `node --test tests/render/gpu.browser.mjs`, after
+     which I'll delete the two delegators.
+   - `esbuild` is no longer used by the renderer tests.
+   - `.gitignore`'s `/tests/render/captures/` line and its `capture.mjs` comment are
+     obsolete; artifacts now go to `test-results/render/`.
+4. **Decide one shadow rule (contract owner's call).** CPU counts a blocker at
    `t < distance`; the GPU uses `t < distance − EPS`, following the plan's pseudocode.
-   They differ only if a surface is within 1e-4 of the light. Current control ranges
-   never produce that, which is why parity is exact. Tell me which to adopt and I'll
-   align the shader if needed.
-4. **Your clarification, confirmed:** the GPU also uses normalized `L`. The endpoint is
+   They differ only if a surface lies within 1e-4 of the light. Current control
+   ranges never produce that, which is why parity is exact. Tell me which to adopt.
+5. **Your clarification, confirmed:** the GPU also uses normalized `L`. The endpoint is
    `scene.light.position`.
-5. **Your cross-review request (CPU reflection and normals):** reviewed line by line
+6. **Your cross-review request (CPU reflection and normals):** reviewed line by line
    against the shader. Camera ray, sphere roots including inside/tangent, the tie rule,
-   plane normalization, face-forward normals, `reflect` and `P + EPS·N` offsets, the
-   budget rule, the matte formula, diagnostic modes and encodings all agree. **No
-   defects found.** Full-frame parity independently confirms it.
-6. **Scene observation, not a defect.** The dark ring around the mirror's upper edge is
+   plane normalization, face-forward normals, `reflect` and `P + EPS·N`, the budget
+   rule, the matte formula, diagnostic modes and encodings all agree. **No defects
+   found.** Full-frame parity and your own parity check both confirm it.
+7. **Scene observation, not a defect.** The dark ring around the mirror's upper edge is
    the mirror reflecting the back wall at **y ≈ 11.8**. The wall is an infinite plane,
-   and inverse-square falloff makes it dark that far from the light. Traced with your
-   `traceRay`: `(320,128)` → mirror → back-wall `(0.12, 11.78, 5)`. Worth one line in
-   AI 2's explanation, or a ceiling plane in the preset.
-7. **History:** `main` (with old PR #1) and `integration/core` have unrelated roots.
-   Please decide how to join them before the next merge to `main`.
+   dark that far from the light. Traced with your `traceRay`: `(320,128)` → mirror →
+   back-wall `(0.12, 11.78, 5)`. Worth a line in AI 2's explanation, or a ceiling
+   plane in the preset.
 
-**For AI 2:** nothing blocks you. The renderer only touches the canvas it's given. If
-you ever see `[renderer] … will stretch` in the console, the canvas CSS box and the
-drawing buffer have different aspect ratios.
+Resolved since my last report: your browser smoke had already independently adopted
+the same "disable WebGL2 in the page" approach I was about to propose (`forceFallback`),
+and your merge at `484a761` joined the two histories.
+
+**For AI 2:** nothing blocks you. The renderer only touches the canvas it's given. A
+console message `[renderer] … will stretch` means the canvas CSS box and the drawing
+buffer have different aspect ratios.
 
 ### 6. Adapted source and notices
 
@@ -169,28 +155,27 @@ ACES tone mapping was not adapted. The contract specifies Reinhard, implemented 
 
 ## History
 
-**Checkpoint 1** (`4b6fc45`, pre-bootstrap) and **checkpoint 2** (`d2f13c1`). These built
-and verified the renderer against a transcribed contract before any bootstrap existed.
-Checkpoint 2 found that the production two-argument path had never drawn a frame, and
-added screenshot-based verification.
+**Checkpoints 1–2** (`4b6fc45`, `d2f13c1`). These built and verified the renderer
+before any bootstrap existed, against a transcribed contract that later proved
+identical to the real one. Checkpoint 2 found that the production two-argument path
+had never drawn a frame, and added screenshot verification.
 
-**Self-review at checkpoint 3** found four defects in that earlier work, all fixed here:
+**Self-review at checkpoint 3** found four defects in that earlier work, all fixed:
 
 1. If WebGL2 creation failed, the WebGL1 probe ran **on the real canvas**, binding a
-   second context type. That breaks the contract rule the CPU fallback relies on. It
-   now probes a throwaway canvas.
+   second context type. That breaks the rule the CPU fallback relies on. It now
+   probes a throwaway canvas.
 2. The aspect check ran **before** resizing, so it compared against the previous
-   frame's layout. It produced four false stretch warnings in the GPU suite, which
-   went unnoticed because only PASS/FAIL lines were read. It now runs after the
-   resize, with a tolerance matching `fitBuffer`'s documented "within one pixel".
-3. "Higher redirect budgets reveal deeper reflections" asserted black for **both**
-   budgets, so it could never fail. It's replaced by a hand-derived two-mirror
-   periscope: budgets 0 and 1 give black, budget 2 gives red 148.
+   frame's layout and gave four false warnings in the GPU suite, unnoticed because
+   only PASS/FAIL lines were read. It now runs after the resize, with `fitBuffer`'s
+   one-pixel tolerance.
+3. A redirect-budget test asserted black for **both** budgets and could not fail. It's
+   replaced by a hand-derived two-mirror periscope: budgets 0 and 1 give black,
+   budget 2 gives red 148.
 4. The smoke "image changed" check compared PNG **byte sizes**. It now decodes and
    compares pixels.
 
-Also fixed: if the first shader compile threw, the context-loss listeners stayed
-attached to the canvas. Two new unit assertions of mine initially matched comment
-text instead of declarations, and the recursion check tested ordering rather than
-recursion. Both were corrected, and the recursion check now has a test proving it
-can fail.
+Also fixed: listeners left attached if the first shader compile threw. Two new unit
+assertions initially matched comment text instead of declarations, and the recursion
+check tested ordering rather than recursion. Both were corrected, and the recursion
+check has a test proving it can fail.

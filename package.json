@@ -10,7 +10,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"tests/**/*.test.ts\"",
+    "test": "node --test \"tests/core/*.test.ts\" \"tests/integration/*.test.ts\"",
+    "test:renderer": "node tests/render/run.mjs && node tests/render/smoke.mjs",
     "test:browser": "npm run build && node --test tests/integration/browser-smoke.mjs",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
@@ -18,6 +19,7 @@
   },
   "devDependencies": {
     "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
     "playwright-core": "1.65.1",
     "typescript": "5.9.3",
     "vite": "8.3.8"

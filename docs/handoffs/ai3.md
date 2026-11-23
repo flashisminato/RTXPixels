@@ -1,50 +1,57 @@
-# AI 3 — CPU / INTEGRATION READY
+# AI 3 — renderer/core merge into team main
 
-## 1. Branch, commits, contract
+## 1. Branch, commits and contract
 
-Work branch: `integration/core`; local `main` is fast-forwarded to the completed checkpoint. Exact current commit: `git rev-parse core-v1` (the tag is created after this commit; the portable delivery report includes its full hash).
+Prepared in a separate `integration/combined` worktree for delivery to `flashisminato/Ray-Tracking` **main**, explicitly authorized by the human. Both histories are preserved in the merge.
 
-Base/main used: **3cf5dcdd1e13331e547f9e59014572e645ce0af3**, tag `bootstrap-v1`. Contract **v1 unchanged**. No team remote, push, publication or deployment.
+- Existing team main: **2746fb1a2ab1142e1ab35c1d5392ec2e7e96855a** (AI 1's renderer already merged).
+- AI 3 source branch: **integration/core**, commit **6bc55c380399ede851ee5cbcd8cf9dbdf21555c2**.
+- Shared bootstrap: **3cf5dcdd1e13331e547f9e59014572e645ce0af3**, tag bootstrap-v1.
+- Contract: **v1 unchanged**. Historical core-v1 still points to the pre-merge CPU checkpoint; it was not moved.
 
-## 2. Changed files / configuration
+The exact resulting merge commit is identified in the delivery message and main history. After fetching, both feature owners must update their branches from that same integrated main commit, not from the old independent histories.
 
-Implemented `src/core/index.ts`, `src/core/vector.ts`, `src/core/frame.ts`, `src/state/index.ts`, `src/state/validation.ts`, `src/fallback/index.ts` and `src/main.ts`. Added numerical/state/frame/fallback tests and browser smoke checks. Updated README, public credits, and AI 3 documentation.
+## 2. Changes and conflict resolution
 
-Added dev-only `playwright-core` **1.65.1** and its lockfile entries for installed-Chrome smoke checks. `npm test` discovers all tests/**/*.test.ts (including future owned suites); `npm run test:browser` always builds fresh output first. No UI/graphics framework, browser download, production dependency, server service or API key.
+- Selected the existing main version of src/render/index.ts, preserving the real renderer instead of the bootstrap throwing stub.
+- Imported AI 3's committed core/state/preset/fallback/main, contracts, build/runtime/CI setup, tests and documentation.
+- Combined .gitignore rules; removed the pre-bootstrap rule ignoring src/contracts.ts. Preserved the existing repository MIT notice verbatim in README.
+- Kept all renderer source/tests/AI 1 handoff unchanged, and all UI/style files/shared types unchanged from the core checkpoint.
+- Separated browser-only renderer tests from Node tests. Added `npm run test:renderer` and pinned its requested dev-only esbuild dependency at **0.28.2**. No transient install, stack change or runtime service.
+- Updated owned integration browser tests: real production renderer checks, explicit forced-fallback checks, real renderer context loss and sampled CPU/GPU parity. Added tests/integration/gpu-parity.ts, using AI 1's existing debug interface without changing public contracts.
+- Added an inline empty favicon to the owned HTML entry after reproducing an unnecessary favicon.ico 404. Updated AI 3 documentation and public limitations to match actual integration.
 
-**No edits** to `src/contracts.ts`, `src/render/**`, `src/ui/**` or `src/styles/**` since bootstrap. No feature branch has been imported because none was supplied.
+## 3. Working behavior and remaining limits
 
-## 3. Working behavior / remaining failures
+The actual WebGL2 renderer now uses the same scene snapshot, camera basis, drawing-buffer dimensions and options as CPU inspection. Target/light/camera actions, first-hit diagnostics and redirect budgets drive the real renderer through the store. The existing harness exposes real computed pixel selection, mirror examples and reset; full AI 2 controls/diagram/keyboard pixel selection remain absent.
 
-Real CPU room rendering at an aspect-preserving cap of 160×90; exact sphere/plane intersections, matte point lighting and hard shadows; untinted perfect mirrors; bounded redirect events; first-hit hit/albedo modes; correct display conversion. One shared math implementation produces inspector events and event-free bulk colors.
+Production rendering is capped at 640×360 and fitted to host aspect. Real WebGL loss switches to a replaced 160×90-or-aspect-fitted CPU canvas while preserving host listeners. The app stays on CPU until reload after a context loss. Computation works offline after page load.
 
-Validated immutable state, monotonic versions, reset, coalesced dirty rendering, normalized selection after resize, stale-work rejection, cancelable CPU chunks, and image-canvas replacement after graphics failure. The deterministic default search finds real mirror → target hits at (71,45) for 160×90 and (286,180) for 640×360.
+Not a final release: AI 2's interface, human feedback, remaining owner cross-reviews, other browsers/physical devices, public deployment and organizer/deadline verification are still pending.
 
-Remaining: renderer stub intentionally throws; full AI 2 UI/diagram/keyboard pixel selection is absent. CPU fallback is the actual displayed image, not a fake GPU success. A lost graphics context stays on CPU until reload. GPU parity and human feedback are not verified.
+## 4. Checks actually run
 
-## 4. Executed checks and limits
+Local macOS, Node 26.4.0, npm 11.17.0, Chrome 158.0.8127.36.
 
-Environment: Node **26.4.0**, npm **11.17.0**, macOS, headless Chrome **158.0.8127.36**.
+- Typecheck of application and all tests: PASS.
+- `npm test`: **31 passed**.
+- Production build: PASS.
+- `npm run test:renderer`: **26 renderer checks + 11 production-path checks passed**; GPU runner reported ANGLE Metal / Apple M1.
+- `npm run test:browser`: **10 passed**, running the combined app in headless Chrome / SwiftShader.
+- Included **630 sampled CPU/GPU pixel/diagnostic comparisons**, 315 each at DPR 1/2, across scene edits and resizes, including center/corners, mirrors, beauty, first-hit modes, IDs and normals. Observed maximum byte difference was 0 on SwiftShader; tolerances remain explicit and other devices are not claimed bit-identical.
 
-- `npm ci`: PASS; zero audit findings at execution. Optional fsevents install-script approval warning remained; no approval was granted.
-- `npm run typecheck`: PASS.
-- `npm test`: **31 passed, 0 failed**.
-- `npm run build`: PASS.
-- `npm run test:browser`: **7 passed, 0 failed**, including real production CPU image/pixel parity, isolated context, high DPI, resize, offline reset, instrumented controls/diagnostics, stale work, UI error handling, post-WebGL-creation fallback, real context-loss extension and draw-failure fallback.
-- `git diff --check`: PASS; ownership diff checked.
+See docs/verification.md for exact coverage and instrumentation. Renderer smoke includes deliberate aspect-mismatch fixtures; those warnings are expected. Combined app tests reject unexpected application/aspect warnings, excluding only the identified screenshot-readback driver performance notice. No page error is accepted.
 
-Lifecycle tests use test-only renderer modules with software WebGL. They do not verify AI 1's shaders. Full real UI, keyboard pixel selection, another physical device/browser, public URL, deployed subpath and organizer rules/deadline were not verified. Screenshot capture succeeded; visual review was unavailable through the image reader.
+## 5. Next integration and owner requests
 
-## 5. Next integration / precise requests
+Both feature accounts fetch the integrated main commit before the next checkpoint. AI 2 supplies only UI/style-owned changes and actual explanation/user feedback; do not overwrite the app with a ZIP. AI 1 reviews CPU reflection/normals and removes its now-unused pre-bootstrap contract mirror/generator in its own follow-up. They remain untouched by AI 3 and are not used by the app or test commands.
 
-Give both accounts the same bootstrap, then have both update from this same integration checkpoint before their next handoff. Return owned-file patches/branches, not full-app overwrites. See `docs/integration-v1.md`.
+AI 1's questions: plane normals are normalized on CPU, matching packing; uMaterialCount is not required; scene/material counts are validated; existing test-only diagnostic methods are used only in tests. AI 2 still needs to confirm that shadow.toLight means normalized L, not the light endpoint.
 
-AI 1: provide the real renderer and diagnostic readback tests; cross-review CPU reflection/normals. AI 2: provide real controls/diagram/events and first-user feedback; respect exported control limits. Clarification to confirm: CPU `shadow.toLight` is normalized L, not an endpoint; the endpoint is scene.light.position.
+Commands: `npm ci`, `npm run dev`, `npm run check`, `npm run test:renderer`, `npm run test:browser`, `npm run preview`. Browser commands require installed Chrome or CHROME_PATH. CI runs the portable typecheck/Node/build gate, not hardware GPU checks.
 
-Human decisions still needed before external delivery: new team remote, maintained static-host destination/authorization, organizer/event and live deadline. Local implementation is not blocked by their absence.
+## 6. Provenance and external delivery
 
-Run commands: `npm ci`, `npm run dev`, `npm run check`, `npm run preview`, `npm run test:browser`. Set CHROME_PATH only when Chrome is not at its standard installation. TypeScript tests run without Chrome.
+AI 3's implementation follows the supplied mathematical contract with no copied upstream source. AI 1's unchanged handoff records read-only reference inspection and independent implementation of standard equations, with no code copied. Kia Preston inspiration credit is preserved, and the team's pre-existing README license notice is retained unchanged. Any future actual adaptation must include the full original upstream MIT notice and exact file/function/commit record.
 
-## 6. Adapted sources / notices
-
-No upstream source/functions copied or adapted by AI 3. Original scene and CPU/integration code implement the supplied mathematical brief. Inspiration and Kia Preston credit are preserved. Incoming substantial adaptations require exact source/function/commit records and the complete original MIT notice. Contribution and AI-use limits are documented; absent team work is not claimed.
+Only source merge/push is authorized here. No change in repository visibility, host deployment, live URL, release publication or competition submission is claimed.

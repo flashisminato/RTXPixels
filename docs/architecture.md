@@ -1,8 +1,8 @@
-# Architecture — v1 CPU/integration checkpoint
+# Architecture — v1 renderer/core integration
 
 ## Shared boundary
 
-Renderer and UI consume the unchanged types in `src/contracts.ts`. They do not own state, fallback, runtime dependencies, scheduling or the image canvas. AI 3 created only the initial stubs and did not edit renderer/UI/style files after handing off `bootstrap-v1`.
+Renderer and UI consume the unchanged types in `src/contracts.ts`. They do not own state, fallback, runtime dependencies, scheduling or the image canvas. AI 3 created only the initial stubs. The integration merge replaces the renderer stub with AI 1's existing main implementation without changing that implementation; UI/style files remain unchanged from bootstrap.
 
 ## Snapshot → frame → image + inspection
 
@@ -14,7 +14,7 @@ Renderer and UI consume the unchanged types in `src/contracts.ts`. They do not o
 
 ## CPU math
 
-The camera looks along +Z initially, with +Y up. The CPU supplies forward/right/up and tanHalfFov to the future GPU renderer. Vertical camera poles are nudged toward +Z. Public intersection directions and normals are normalized; returned t and bounds use world distances.
+The camera looks along +Z initially, with +Y up. The CPU supplies forward/right/up and tanHalfFov to the integrated GPU renderer. Vertical camera poles are nudged toward +Z. Public intersection directions and normals are normalized; returned t and bounds use world distances.
 
 Sphere intersections accept nonnegative discriminants and select the nearest strict in-range root, including exit roots. Plane denominators below 1e-6 miss. A strict closest-distance bound preserves the earlier array object on an exact tie. Missing geometry never causes a material read.
 

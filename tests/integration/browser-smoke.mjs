@@ -39,7 +39,7 @@ before(async () => {
   browser = await chromium.launch({ headless: true,
     ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : { channel: 'chrome' }),
     args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
-  console.log(`Browser: ${browser.version()} (headless Chrome; software graphics for lifecycle fixtures)`);
+  console.log(`Browser: ${browser.version()} (headless Chrome; SwiftShader for integrated browser/parity checks)`);
 }, { timeout: 30000 });
 after(async () => {
   await browser?.close();
@@ -55,6 +55,15 @@ async function withPage(run, deviceScaleFactor = 1) {
   try { await run(page, context); assert.deepEqual(errors, []); }
   finally { await context.close(); }
 }
+async function forceFallback(page) {
+  await page.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (type, ...args) {
+      return type === 'webgl2' ? null : original.call(this, type, ...args);
+    };
+  });
+}
+const waitReady = page => page.waitForFunction(() => document.querySelector('[role=status]')?.textContent.startsWith('ready:'));
 const waitFallback = page => page.waitForFunction(() => document.querySelector('[role=status]')?.textContent.startsWith('fallback:'));
 const inspection = page => page.locator('pre').evaluate(element => JSON.parse(element.textContent));
 async function verifyInspectedPixel(page) {
@@ -88,16 +97,121 @@ async function captureUI(page) {
       } };
     }` }));
 }
-async function waitVersion(page, version) {
-  await page.waitForFunction(v => window.__view?.sceneVersion === v && window.__view.status === 'fallback' &&
-    Number(document.querySelector('.canvas-host > canvas').dataset.sceneVersion) === v, version);
+async function waitVersion(page, version, status = 'fallback') {
+  await page.waitForFunction(({ version, status }) => window.__view?.sceneVersion === version && window.__view.status === status &&
+    Number(document.querySelector('.canvas-host > canvas').dataset.sceneVersion) === version, { version, status });
 }
 
-test('production preview: real CPU image, computed example, pointer selection and keyboard reset', async () => {
+function appWarnings(page) {
+  const warnings = [];
+  page.on('console', event => {
+    // Composited screenshot readback can cause this specific driver performance
+    // notice. It is not an application error or an aspect/GL correctness warning.
+    if (event.type() === 'warning' && event.text().includes('GL Driver Message') && event.text().includes('GPU stall due to ReadPixels')) return;
+    if (['warning', 'error'].includes(event.type())) warnings.push(event.text());
+  });
+  return warnings;
+}
+
+async function compositedImage(page) {
+  // Production WebGL uses preserveDrawingBuffer:false. Observe the composited
+  // screenshot, not a readPixels call after the browser has cleared its buffer.
+  const png = await page.locator('.canvas-host > canvas').screenshot({ scale: 'css' });
+  const colors = await page.evaluate(async base64 => {
+    const image = new Image();
+    const loaded = new Promise((resolve, reject) => { image.onload = resolve; image.onerror = reject; });
+    image.src = `data:image/png;base64,${base64}`;
+    await loaded;
+    const canvas = document.createElement('canvas');
+    canvas.width = image.width; canvas.height = image.height;
+    const context = canvas.getContext('2d');
+    context.drawImage(image, 0, 0);
+    const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    const colors = new Set();
+    for (let i = 0; i < pixels.length; i += 16) colors.add(`${pixels[i]},${pixels[i + 1]},${pixels[i + 2]}`);
+    return colors.size;
+  }, png.toString('base64'));
+  assert.ok(colors > 100, `Expected a real shaded scene, got ${colors} colors`);
+  return png;
+}
+
+test('production WebGL app draws a real image and computes mirror inspection and reset', async () => {
   await withPage(async page => {
+    const warnings = appWarnings(page);
+    await page.goto(preview);
+    await waitReady(page);
+    assert.deepEqual(await page.locator('.canvas-host > canvas').evaluate(canvas => [canvas.width, canvas.height]), [640, 360]);
+    await compositedImage(page);
+    await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+    const example = await inspection(page);
+    assert.deepEqual(example.result.events.filter(e => e.kind === 'hit').map(e => e.hit.objectId), ['mirror', 'target']);
+    assert.deepEqual([example.pixel.width, example.pixel.height], [640, 360]);
+    await page.getByRole('button', { name: 'Reset', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('canvas').dataset.sceneVersion === '2');
+    await waitReady(page);
+    assert.equal((await inspection(page)).sceneVersion, 2);
+    assert.deepEqual(warnings, []);
+  });
+}, { timeout: 30000 });
+
+test('real renderer responds to state/options and high-DPI resize without stretching', async () => {
+  await withPage(async (page, context) => {
+    const warnings = appWarnings(page);
+    await captureUI(page);
+    await page.goto(dev);
+    await waitReady(page);
+    const original = await compositedImage(page);
+    await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+    await page.evaluate(() => window.__actions.dispatch({ type: 'light-x', value: 4 }));
+    await waitVersion(page, 2, 'ready');
+    assert.notDeepEqual(await compositedImage(page), original);
+    let version = 2;
+    for (const action of [{ type: 'view-mode', value: 'hit' }, { type: 'view-mode', value: 'albedo' },
+      { type: 'view-mode', value: 'beauty' }, { type: 'camera-yaw', value: 15 }, { type: 'redirects', value: 0 }]) {
+      await page.evaluate(action => window.__actions.dispatch(action), action);
+      await waitVersion(page, ++version, 'ready');
+      const selected = await inspection(page);
+      assert.equal(selected.sceneVersion, version);
+      if (action.type === 'view-mode' && action.value !== 'beauty') assert.equal(selected.result.events.at(-1).reason, 'diagnostic');
+    }
+    const selected = await inspection(page);
+    await page.locator('.canvas-host').evaluate(host => { host.style.width = '240px'; host.style.aspectRatio = '1 / 1'; });
+    await page.waitForFunction(() => document.querySelector('canvas').width === 360 && document.querySelector('canvas').height === 360 &&
+      document.querySelector('[role=status]').textContent.startsWith('ready:'));
+    const resized = await inspection(page);
+    assert.deepEqual([resized.pixel.width, resized.pixel.height], [360, 360]);
+    assert.equal(resized.pixel.x, Math.floor((selected.pixel.x + 0.5) / selected.pixel.width * 360));
+    await context.setOffline(true);
+    await page.getByRole('button', { name: 'Reset', exact: true }).click();
+    await waitVersion(page, version + 1, 'ready');
+    assert.deepEqual(warnings, []);
+  }, 2);
+}, { timeout: 30000 });
+
+test('CPU/GPU beauty, first-hit, ID and normal parity at center/corners, resize and DPR 1/2', async () => {
+  for (const dpr of [1, 2]) {
+    await withPage(async page => {
+      await page.goto(dev);
+      await waitReady(page);
+      const result = await page.evaluate(async () => {
+        const { checkGPUParity } = await import('/tests/integration/gpu-parity.ts');
+        return checkGPUParity();
+      });
+      assert.ok(result.comparisons >= 270);
+      assert.ok(result.observedObjects.includes('mirror'));
+      assert.equal(result.dpr, dpr);
+      console.log(`Parity DPR ${dpr}: ${result.comparisons} pixels/variants; max byte difference ${result.maxByteError}; ${result.backend}`);
+    }, dpr);
+  }
+}, { timeout: 60000 });
+
+test('production forced fallback: real CPU image, computed example, pointer selection and keyboard reset', async () => {
+  await withPage(async page => {
+    await forceFallback(page);
     await page.goto(preview);
     await waitFallback(page);
-    assert.match(await page.locator('[role=status]').textContent(), /awaiting AI 1/);
+    assert.match(await page.locator('[role=status]').textContent(), /WebGL2/);
     const colors = await page.locator('.canvas-host > canvas').evaluate(canvas => {
       const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
       const colors = new Set();
@@ -122,8 +236,9 @@ test('production preview: real CPU image, computed example, pointer selection an
   });
 }, { timeout: 30000 });
 
-test('production: high DPI, aspect-changing resize and offline reset retain normalized selection', async () => {
+test('production forced fallback: high DPI, aspect-changing resize and offline reset retain normalized selection', async () => {
   await withPage(async (page, context) => {
+    await forceFallback(page);
     await page.goto(preview);
     await waitFallback(page);
     await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
@@ -145,6 +260,7 @@ test('production: high DPI, aspect-changing resize and offline reset retain norm
 
 test('instrumented UI actions: diagnostics, all controls and rapid changes use current real events', async () => {
   await withPage(async page => {
+    await forceFallback(page);
     await captureUI(page);
     await page.goto(dev);
     await waitFallback(page);
@@ -178,6 +294,7 @@ test('instrumented UI actions: diagnostics, all controls and rapid changes use c
 
 test('a UI subscriber failure does not leave an old image paired with a committed control', async () => {
   await withPage(async page => {
+    await forceFallback(page);
     await captureUI(page);
     await page.goto(dev);
     await waitFallback(page);
@@ -214,27 +331,17 @@ test('failure AFTER actual WebGL2 creation replaces the canvas before CPU render
   });
 }, { timeout: 30000 });
 
-test('real WebGL context loss with test renderer preserves host listeners and switches to CPU', async () => {
+test('production renderer context loss preserves host listeners and switches to CPU', async () => {
   await withPage(async page => {
-    await page.route(/\/src\/render\/index\.ts$/, route => route.fulfill({ contentType: 'text/javascript', body: `
-      export function createRenderer(canvas, hooks) {
-        const gl = canvas.getContext('webgl2');
-        if (!gl) throw new Error('Test machine lacks WebGL2');
-        window.__gl = gl;
-        window.__originalCanvas = canvas;
-        const lost = event => { event.preventDefault(); hooks.onContextLost(); };
-        canvas.addEventListener('webglcontextlost', lost);
-        return {
-          draw(frame) { window.__frame = frame; gl.clearColor(0.1, 0.2, 0.3, 1); gl.clear(gl.COLOR_BUFFER_BIT); },
-          dispose() { window.__disposedRenderer = true; canvas.removeEventListener('webglcontextlost', lost); }
-        };
-      }` }));
-    await page.goto(dev);
-    await page.waitForFunction(() => document.querySelector('[role=status]').textContent.startsWith('ready:'));
-    assert.deepEqual(await page.evaluate(() => [window.__frame.width, window.__frame.height]), [640, 360]);
-    await page.evaluate(() => window.__gl.getExtension('WEBGL_lose_context').loseContext());
+    await page.goto(preview);
+    await waitReady(page);
+    assert.deepEqual(await page.locator('.canvas-host > canvas').evaluate(canvas => [canvas.width, canvas.height]), [640, 360]);
+    await page.evaluate(() => {
+      window.__originalCanvas = document.querySelector('.canvas-host > canvas');
+      window.__originalCanvas.getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+    });
     await waitFallback(page);
-    assert.equal(await page.evaluate(() => window.__disposedRenderer), true);
+    assert.equal(await page.evaluate(() => window.__originalCanvas.isConnected), false);
     assert.equal(await page.evaluate(() => window.__originalCanvas !== document.querySelector('.canvas-host > canvas')), true);
     await page.locator('.canvas-host').click({ position: { x: 100, y: 100 } });
     await verifyInspectedPixel(page);
