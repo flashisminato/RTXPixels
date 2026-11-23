@@ -43,6 +43,9 @@ tests/render/capture.mjs              PNG evidence capture
 tests/render/capture-entry.ts         capture fixtures
 tests/render/contract-v1.types.ts     TEMPORARY contract mirror, see below
 tests/render/prepare-contracts.mjs    pre-bootstrap shim
+tests/render/conformance.ts           compile-time contract signature pin
+tests/render/smoke.mjs                production-path smoke runner
+tests/render/smoke-entry.ts           production-path smoke fixtures
 .gitignore                            ignores the generated placeholder + captures
 ```
 
@@ -219,3 +222,118 @@ node tests/render/capture.mjs             # PNG evidence into tests/render/captu
 ```
 
 `CHROME_PATH` overrides browser discovery. `--headful` shows the window.
+
+---
+
+## Checkpoint 2 — runnability verified from a clean clone
+
+The previous checkpoint reported passing checks from the working directory,
+which can hide local state. This checkpoint re-verifies from scratch and closes
+a gap the first round of testing did not cover.
+
+### Clean-clone verification
+
+A fresh `git clone --branch feature/renderer` of the pushed commit, with no
+local state at all:
+
+- Running `node tests/render/run.mjs` with no setup fails cleanly with an
+  actionable message naming the exact install command. No crash, no confusing
+  stack trace.
+- Following the documented sequence produces **26/26 passing** on
+  `ANGLE (Apple, ANGLE Metal Renderer: Apple M5)`.
+- `npm i --no-save --no-package-lock esbuild` does **not** create a
+  `package.json`, confirmed explicitly. AI 3's ownership of the manifest is
+  not encroached on.
+- `git status` is clean afterwards: the generated placeholder and captures are
+  correctly ignored.
+
+### Gap found and closed: the production path had never drawn a frame
+
+Every drawing check ran with `{ debug: true, preserveDrawingBuffer: true }` and
+observed results through `readPixels`. That is **not** how the app uses this
+module. AI 3 calls `createRenderer(canvas, hooks)` with exactly two arguments,
+which selects the production shader variant and `preserveDrawingBuffer: false` —
+a configuration under which `readPixels` after compositing is not a valid
+observation at all. The production path linked in one test but never rendered.
+
+Added `tests/render/smoke.mjs`, which drives the renderer exactly as AI 3 will
+(two-argument call, render-on-demand behind a dirty flag and
+`requestAnimationFrame`, a canvas laid out in a real page) and verifies it with
+**composited page screenshots** instead of `readPixels`. Nine checks, all
+passing: no thrown errors, no GL console errors, three repaints across an edit
+and a resize, no spurious context loss, real image content on first paint
+(59.5 KB PNG, not a blank page), and a changed image after moving an object.
+
+**Verdict: yes, this module can run.** The production configuration draws a
+correct, visible ray-traced image in a real page.
+
+### Defect found and fixed: silent aspect-ratio stretching
+
+The smoke run requested a 480x360 drawing buffer inside a 640x360 host. The
+browser scaled it to fit and every sphere rendered as a visible ellipse, with no
+error anywhere.
+
+The rendered pixels were correct for the buffer that was requested, and under
+the shared contract matching the buffer aspect to the host is AI 3's
+responsibility ("never stretch a different aspect ratio into the host"). But it
+failed **silently**, and a plausible-looking wrong image is the worst outcome
+for an app whose entire purpose is explaining what a pixel really shows.
+
+`draw` now compares the drawing-buffer aspect against `canvas.clientWidth/
+clientHeight` and logs one actionable `console.warn` naming both sizes and
+suggesting corrected dimensions. Deliberate design choices:
+
+- It **reports only** and never rewrites the frame it was given. Silently
+  "fixing" the host's dimensions would hide an integration bug.
+- It warns once per distinct mismatch, so a persistent mismatch cannot flood the
+  console during animation.
+- It stays silent when the canvas is detached or not yet laid out
+  (`clientWidth === 0`), since a transient mismatch during layout is normal.
+- A 1% tolerance absorbs fractional CSS pixel rounding.
+
+Both behaviours are now covered: the deliberate stretch produces the warning,
+and correctly sized frames produce no renderer warnings at all.
+
+### Added: compile-time contract conformance
+
+All runtime tests call `createRenderer` with a third options argument and use
+the debug-only members, so they would not have noticed the **public** two-argument
+signature drifting away from the contract. `tests/render/conformance.ts` pins it
+at compile time: it assigns `createRenderer` to the contract's exact factory
+type and uses the result as a plain `Renderer`. It contains no runtime code and
+fails `tsc` if the public shape ever diverges.
+
+### Checks run at this checkpoint
+
+| Check | Result |
+|---|---|
+| `node tests/render/run.mjs` (clean clone) | 26/26 passed, ANGLE Metal / Apple M5 |
+| `node tests/render/smoke.mjs` | 9/9 passed, production two-argument path |
+| `tsc --noEmit --strict` over `src/render/**` + all test entries | clean, exit 0 |
+| First-run experience with no setup | fails with an actionable message, exit 2 |
+| `npm i --no-save` manifest leakage | none, verified |
+
+### Still not verified
+
+Unchanged from checkpoint 1, and none of it is resolvable by AI 1 alone:
+Safari and Firefox, a second physical device, any frame-rate measurement, and
+CPU/GPU parity (which needs AI 3's reference tracer). The module has still never
+been driven by the real store or UI, because neither exists yet.
+
+### Additional note for AI 3
+
+The aspect warning is a useful integration tripwire during wiring: if it appears
+in the console, the image on screen is geometrically wrong even though the
+renderer is behaving correctly. The fix belongs in the host's resize handling —
+size the drawing buffer to the host's aspect ratio, capped at 640x360 per the
+contract, rather than to a fixed width.
+
+### How to run, updated
+
+```bash
+node tests/render/prepare-contracts.mjs   # no-op once AI 3's contract exists
+npm i --no-save --no-package-lock esbuild # until AI 3 publishes a manifest
+node tests/render/run.mjs                 # 26 GPU checks in headless Chrome
+node tests/render/smoke.mjs               # 9 production-path checks
+node tests/render/capture.mjs             # PNG evidence into tests/render/captures/
+```

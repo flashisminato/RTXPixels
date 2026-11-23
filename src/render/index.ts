@@ -113,6 +113,53 @@ export function createRenderer(
   let lastError: Error | null = null;
   let debugMode = DEBUG_OFF;
   let disposed = false;
+  let lastAspectWarning = '';
+
+  /**
+   * Detect a stretched image.
+   *
+   * The renderer computes its horizontal field from `frame.width / frame.height`
+   * and has no control over CSS. If the host sizes the canvas element to a
+   * different aspect ratio, the browser scales the drawing buffer to fit and
+   * every sphere silently becomes an ellipse. The picture still looks
+   * plausible, which is what makes it dangerous in a teaching app.
+   *
+   * Matching the two is AI 3's responsibility under the shared contract, so
+   * this only reports; it never "corrects" the frame it was given. Reporting is
+   * a console warning rather than a thrown error because a transient mismatch
+   * during layout is normal and must not break rendering.
+   */
+  function checkAspect(width: number, height: number): void {
+    const cssWidth = canvas.clientWidth;
+    const cssHeight = canvas.clientHeight;
+
+    // Zero means the canvas is detached or not laid out yet: nothing to compare.
+    if (!(cssWidth > 0) || !(cssHeight > 0)) return;
+
+    const bufferAspect = width / height;
+    const displayAspect = cssWidth / cssHeight;
+
+    // 1% tolerance absorbs rounding in fractional CSS pixel sizes.
+    if (Math.abs(bufferAspect - displayAspect) <= displayAspect * 0.01) {
+      lastAspectWarning = '';
+      return;
+    }
+
+    const signature = `${width}x${height}->${cssWidth}x${cssHeight}`;
+    if (signature === lastAspectWarning) return; // warn once per distinct state
+    lastAspectWarning = signature;
+
+    const suggestedHeight = Math.max(1, Math.round(width / displayAspect));
+    const suggestedWidth = Math.max(1, Math.round(height * displayAspect));
+    console.warn(
+      `[renderer] Drawing buffer ${width}x${height} (aspect ${bufferAspect.toFixed(3)}) does not ` +
+        `match the canvas display size ${cssWidth}x${cssHeight} (aspect ${displayAspect.toFixed(3)}). ` +
+        `The browser will stretch the image and spheres will render as ellipses. ` +
+        `The rendered pixels are correct for the requested buffer; the host must size the ` +
+        `buffer to the host aspect ratio. Try ${width}x${suggestedHeight} or ` +
+        `${suggestedWidth}x${height}.`,
+    );
+  }
 
   function createResources(): Resources {
     const program = linkProgram(gl, FULLSCREEN_VERT, buildTraceFragmentSource({ debug }));
@@ -179,6 +226,7 @@ export function createRenderer(
 
     const width = Math.max(1, Math.floor(frame.width));
     const height = Math.max(1, Math.floor(frame.height));
+    checkAspect(width, height);
 
     // The drawing buffer size is owned by the host, but if it disagrees with
     // the frame the aspect-ratio maths in the shader would be wrong, so take
