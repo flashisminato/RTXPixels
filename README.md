@@ -1,70 +1,116 @@
 # Follow a Pixel
 
-An original educational web experiment: **How does a game decide what a mirror shows?**
+**How does a game decide what a mirror shows?**
 
-## Current checkpoint: WebGL renderer and CPU core integrated
+Follow a Pixel is an interactive browser ray tracer built to answer that question. It renders a small room with a mirror sphere, a colored target and a movable light. You can change the scene, pick any pixel, and see the actual calculation behind that pixel's color: which surface the ray hit, how it bounced off the mirror, and whether the light was blocked.
 
-The app renders the original room through **AI 1's real WebGL2 renderer**, capped at 640×360, with spheres, planes, a perfect mirror, direct matte lighting and hard shadows. A cancelable **160×90 CPU fallback** handles unavailable or lost graphics contexts. Both buffers fit the host aspect. Click the image to inspect actual CPU ray events for the same frame, select a computed mirror example, or reset. No API keys or runtime services.
+Nothing is prerecorded. Every image and every explanation is computed live in your browser. There is no login, no server, and no API key.
 
-**Not a finished team release:** AI 2's full controls/explanatory diagram has not arrived; its minimal development harness is preserved. The renderer is no longer a stub. Contract **v1** remains unchanged: no glass.
+> **Live demo:** not deployed yet. The link will be added here once the app is published.
+>
+> **Status:** the renderer, the CPU tracer behind the inspector, and the scene logic for every control below are built and tested. The on-screen controls and the step-by-step explanation panel are still being finished. The current interface lets you click a pixel to inspect it, jump to a computed mirror example, and reset.
 
-## Run and verify
+## What you can do
 
-Tested runtime: Node **26.4.0**, npm **11.17.0**. Use `nvm install && nvm use`; exact package/transitive versions are locked.
+- **Move the target sphere** and watch its reflection move in the mirror.
+- **Move the light** and watch the hard shadows follow it.
+- **Turn the camera** up to 15° to either side.
+- **Turn the mirror matte** to see the same sphere without reflections.
+- **Change the bounce limit** (0–4) to see how many reflections a ray may follow.
+- **Switch view modes:** the final image, a *hit* view (did the first ray hit anything?) and an *albedo* view (the surface color of the first hit).
+- **Inspect any pixel** to see the computed path of its ray, step by step.
+- **Reset** to the starting scene in one action.
+
+## How it works
+
+The app traces rays **backwards**, from the camera into the scene. Real light travels the other way, from the light to your eye, but tracing backwards only computes the rays that actually reach the screen.
+
+For every pixel:
+
+1. **Shoot a ray** from the camera through the center of the pixel.
+2. **Find the nearest surface** it hits. The scene is built from spheres and flat planes, which are tested with exact geometric formulas.
+3. **If the surface is a mirror**, reflect the ray around the surface normal and repeat from step 2. A ray may bounce at most 4 times. A mirror that would need another bounce beyond the limit is drawn black.
+4. **If the surface is matte**, send a *shadow ray* towards the light. If any object lies between the surface and the light, the point is in shadow and gets only a little ambient light. Otherwise it is lit, more brightly when it faces the light directly and less brightly the farther away the light is.
+5. **If the ray hits nothing**, it shows the sky.
+
+Finally the color is tone-mapped and converted for display.
+
+The image is drawn on the **GPU** with WebGL2. When you inspect a pixel, the same calculation runs again on the **CPU** for that one pixel, which is what produces the step-by-step explanation. Automated tests compare the GPU image with the CPU calculation pixel by pixel, so the explanation matches what is on screen.
+
+If WebGL2 is unavailable, or the graphics context is lost, the app switches to a lower-resolution image computed entirely on the CPU, and every control and the inspector keep working.
+
+## Running it locally
+
+Requires **Node 26.4.0** (see `.nvmrc`) and npm.
 
 ```sh
-npm ci
-npm run dev
-npm run check       # all-source typecheck + Node core/integration tests + build
-npm run preview
-npm run test:renderer # AI 1's browser-only GPU suite and production smoke
-npm run test:browser  # combined application, CPU/GPU parity and fallback
+nvm install && nvm use   # optional: selects the pinned Node version
+npm ci                   # install the exact locked dependencies
+npm run dev              # start the development server
 ```
 
-`test:browser` builds fresh output and uses installed Google Chrome through `playwright-core`. For another installation, set `CHROME_PATH` to its executable. No browser is downloaded automatically. The browser suite starts/stops its own local servers and isolated browser contexts. It is separate from CI's portable math/build gate.
+Open the local URL that `npm run dev` prints.
 
-Latest verification: **31 numerical/state/integration tests, 26 renderer checks, 11 renderer production-smoke checks and 10 combined-browser tests passed**, plus typecheck and build. The combined suite includes 630 sampled CPU/GPU pixel/diagnostic comparisons at DPR 1 and 2 on SwiftShader. AI 1's standalone renderer suite also passed on ANGLE Metal / Apple M1. See [verification](docs/verification.md) for scope and limits. Node and browser-only renderer tests have separate commands; both are typechecked. Browser selectors must be updated when AI 2's real interface is integrated.
+| Command | What it does |
+|---|---|
+| `npm run check` | Type check, unit tests and production build. This is what CI runs. |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run test:renderer` | GPU renderer checks in Chrome |
+| `npm run test:browser` | Whole-app browser checks in Chrome, including CPU/GPU comparison |
 
-## Structure
+The browser tests use your installed Google Chrome and never download a browser. To use a different installation, set `CHROME_PATH` to its executable.
 
-- `src/contracts.ts`: unchanged shared v1 types and constants.
-- `src/core/`: vector math, camera, intersections, shading, events, display conversion and frame/selection helpers.
-- `src/scene/`: original room preset and authoritative control limits.
-- `src/state/`: validated actions, immutable snapshots and monotonic scene versions.
-- `src/fallback/`: cancelable, event-free bulk CPU rendering.
-- `src/main.ts`: canvas ownership, scheduling, resize, inspection and fallback orchestration.
-- `src/render/`: AI 1's real WebGL2 implementation, preserved unchanged from the existing main branch.
-- `src/ui/`, `src/styles/`: AI 2 ownership; currently a minimal development harness.
+## Browser support
 
-Read [architecture](docs/architecture.md), [the shared contract](docs/contract-v1.md), [ownership](docs/ownership.md), and [integration notes](docs/integration-v1.md).
-
-## Team workflow
-
-Team repository: [flashisminato/Ray-Tracking](https://github.com/flashisminato/Ray-Tracking).
-
-The merge joins the existing renderer history at `2746fb1` and AI 3's `integration/core` checkpoint at `6bc55c3`, preserving both histories. It was prepared in a separate `integration/combined` checkout. The original `bootstrap-v1` and `core-v1` tags remain historical checkpoints, not tags for the combined app.
-
-Both feature accounts should fetch and update their feature branches from the same integrated `main` commit before their next handoff. Do not overwrite an entire checkout or merge an old renderer stub over real code. Only AI 3 integrates reviewed owned-file changes into main. Never use the reference repository as a write remote.
+Any browser with WebGL2 gets the GPU image, at up to 640×360 pixels. Browsers without it get the CPU image at up to 160×90. Desktop Chrome on macOS is tested. Safari, Firefox and mobile devices have not been verified yet.
 
 ## Deployment
 
-Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs support a root or repository subpath; no SPA rewrites are required. No host account, publication workflow, credentials or live URL is configured. Publication requires the human's chosen destination and authorization. Core computation works offline **after the page loads**; cold-start offline caching is not implemented.
+The app is a static site: build it with `npm ci && npm run check` and publish the `dist/` folder. Asset paths are relative, so it works at a domain root or in a subfolder such as a GitHub Pages project page. No server-side routing is needed. After the page has loaded, all computation runs offline.
 
-## Provenance and limitations
+## Project structure
 
-Inspired by [Light Teachings by Kia Preston (pkncoder)](https://github.com/pkncoder/Light-Teachings/tree/57260fe2a6badbc826271856bbcf6c8a2090de17). AI 3 did not copy or adapt upstream source; this implementation follows the supplied mathematical contract. Incoming adaptations must preserve the full upstream MIT text and identify source commits/functions. See [contribution record](docs/contributions.md) and [public credits](public/notices/credits.html).
+```
+src/
+  contracts.ts   shared types and constants every module agrees on
+  core/          CPU ray tracer: camera, intersections, shading, inspection
+  render/        WebGL2 GPU renderer
+  scene/         the room preset and the allowed range of every control
+  state/         validated scene state, versioning and reset
+  fallback/      low-resolution CPU image when WebGL2 is unavailable
+  ui/, styles/   the interface
+  main.ts        wires everything together
+tests/           unit, renderer and whole-app browser tests
+docs/            architecture, shared contract, verification and release notes
+```
 
-Sampled CPU/GPU parity is verified on headless SwiftShader, not universally across hardware/drivers. Second-device verification, full keyboard pixel selection, a first-user study, deployed-host testing and organizer/deadline verification remain outstanding. See the [release checklist and demo guide](docs/release.md).
+To go deeper, see the [architecture](docs/architecture.md), the [shared contract](docs/contract-v1.md) and the [verification notes](docs/verification.md).
 
-## Repository license
+## Limitations
 
-The existing repository notice is preserved verbatim below. This is separate from the upstream inspiration credit.
+This is a focused teaching tool, not a full renderer:
 
-# Ray-Tracking
-This software uses MIT license:
-Copyright (c) <2026> <Keteris>
+- Shapes are spheres and infinite planes only.
+- There is one point light, so shadows have hard edges.
+- Mirrors are perfect. There is no glass, refraction, blurry reflection or indirect light bouncing between surfaces.
+- Each pixel uses a single ray, so edges are not anti-aliased.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Ray-Tracking"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+## Credits
+
+Inspired by **[Light Teachings](https://github.com/pkncoder/Light-Teachings/tree/57260fe2a6badbc826271856bbcf6c8a2090de17) by Kia Preston (pkncoder)**, a native macOS ray tracer. Follow a Pixel is an independent browser project. No code from Light Teachings was copied; the ray-tracing maths uses standard textbook formulas. The original contribution is the interactive pixel inspector and the experience built around it.
+
+Built by a three-person team working with AI coding assistants. The [contribution record](docs/contributions.md) documents how each part was produced, including the use of AI. The in-app [credits page](public/notices/credits.html) covers the inspiration, AI use and limitations.
+
+The app has no runtime dependencies. It is built with [Vite](https://vite.dev) and [TypeScript](https://www.typescriptlang.org).
+
+## License
+
+MIT License
+
+Copyright (c) 2026 Keteris
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
 The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
