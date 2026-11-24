@@ -1,11 +1,11 @@
 import { CANVAS_LABEL, project, screenMapper, type DiagramPlan, type PlanMark, type PlanSegment } from './explain.ts';
 
 const SEGMENT_COLOR: Record<PlanSegment['role'], string> = {
-  path: '#ffd98a',
-  normal: '#d7cbff',
-  'shadow-open': '#b7ebc6',
-  'shadow-blocked': '#ffb4b4',
-  miss: '#a9d4f2',
+  path: '#d52232',          // signal: the followed camera ray
+  normal: '#171717',        // ink: geometry
+  'shadow-open': '#245ba7',  // science: shadow ray
+  'shadow-blocked': '#245ba7',
+  miss: '#9ca3af',          // construction
 };
 
 export function createDiagram(canvas: HTMLCanvasElement): { show(plan: DiagramPlan | null, message: string): void; dispose(): void } {
@@ -54,11 +54,11 @@ function drawDiagram(
   context.setTransform(1, 0, 0, 1, 0, 0);
   context.clearRect(0, 0, context.canvas.width, context.canvas.height);
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
-  context.fillStyle = '#0c141c';
+  context.fillStyle = '#ffffff';
   context.fillRect(0, 0, cssWidth, cssHeight);
   context.lineCap = 'round';
   context.lineJoin = 'round';
-  context.font = '12px system-ui, sans-serif';
+  context.font = '12px Inter, system-ui, sans-serif';
   const caption = wrap(context, plan?.canvasLabel ?? CANVAS_LABEL, cssWidth - 20);
   const legendHeight = Math.min(cssHeight * 0.34, 14 + caption.length * 15 + 8);
   const plotHeight = cssHeight - legendHeight;
@@ -79,7 +79,7 @@ function drawDiagram(
       const labels: { x: number; y: number; text: string }[] = [];
       for (const segment of plan.segments) labels.push(...drawSegment(context, map, segment, cssWidth, plotHeight));
       for (const mark of plan.marks) labels.push(drawMark(context, map, mark, cssWidth, plotHeight));
-      context.font = '12px system-ui, sans-serif';
+      context.font = '12px Inter, system-ui, sans-serif';
       context.textAlign = 'left';
       context.textBaseline = 'middle';
       separateLabels(context, labels, cssWidth, plotHeight);
@@ -88,26 +88,26 @@ function drawDiagram(
     } else writeMessage(context, message, cssWidth, plotHeight);
   } else writeMessage(context, message, cssWidth, Math.max(plotHeight, cssHeight * 0.5));
 
-  context.fillStyle = '#101820';
+  context.fillStyle = '#f5f5f3';
   context.fillRect(0, plotHeight, cssWidth, cssHeight - plotHeight);
-  context.strokeStyle = '#345066';
+  context.strokeStyle = '#e4e4e0';
   context.lineWidth = 1;
   context.setLineDash([]);
   context.beginPath();
   context.moveTo(0, plotHeight);
   context.lineTo(cssWidth, plotHeight);
   context.stroke();
-  context.font = '12px system-ui, sans-serif';
+  context.font = '12px Inter, system-ui, sans-serif';
   context.textAlign = 'left';
   context.textBaseline = 'top';
-  context.fillStyle = '#d5dee8';
+  context.fillStyle = '#62666b';
   caption.forEach((line, index) => context.fillText(line, 10, plotHeight + 8 + index * 15));
 }
 
 function drawAxisPlate(context: CanvasRenderingContext2D, x: number, y: number): void {
   context.save();
-  context.fillStyle = '#0c141c';
-  context.strokeStyle = '#345066';
+  context.fillStyle = '#ffffff';
+  context.strokeStyle = '#e4e4e0';
   context.lineWidth = 1;
   context.fillRect(x, y, 96, 70);
   context.strokeRect(x, y, 96, 70);
@@ -161,8 +161,9 @@ function drawMark(
   const point = farther ? clampPoint(mapped, width, height, 20) : mapped;
   context.save();
   context.lineWidth = 1.5;
-  context.strokeStyle = '#f4fbff';
-  context.fillStyle = mark.role === 'blocker' ? '#ffb4b4' : mark.role === 'light' ? '#fff1b0' : '#ffd98a';
+  context.strokeStyle = '#171717';
+  // camera: ink; light: pale illustration fill; hits and blockers: signal (selected intersections).
+  context.fillStyle = mark.role === 'camera' ? '#171717' : mark.role === 'light' ? '#fbf7e8' : '#d52232';
   if (mark.role === 'light') {
     diamond(context, point.x, point.y, 6);
     context.fill();
@@ -263,11 +264,11 @@ function drawAxes(context: CanvasRenderingContext2D, x: number, y: number): void
   const heightLength = Math.hypot(height.x, height.y) || 1;
   const depthLength = Math.hypot(depth.x, depth.y) || 1;
   context.save();
-  context.strokeStyle = '#d5dee8';
-  context.fillStyle = '#d5dee8';
+  context.strokeStyle = '#62666b';
+  context.fillStyle = '#62666b';
   context.lineWidth = 1.25;
   context.setLineDash([]);
-  context.font = '11px system-ui, sans-serif';
+  context.font = '11px Inter, system-ui, sans-serif';
   context.textBaseline = 'middle';
   context.textAlign = 'left';
   axis(context, x, y, x + 30, y, '+X', 2, 12);
@@ -332,16 +333,16 @@ function cross(context: CanvasRenderingContext2D, x: number, y: number, radius: 
 
 function halo(context: CanvasRenderingContext2D, text: string, x: number, y: number): void {
   context.lineWidth = 3;
-  context.strokeStyle = 'rgba(8, 12, 18, 0.92)';
+  context.strokeStyle = 'rgba(255, 255, 255, 0.92)';
   context.strokeText(text, x, y);
-  context.fillStyle = '#f4fbff';
+  context.fillStyle = '#171717';
   context.fillText(text, x, y);
 }
 
 function writeMessage(context: CanvasRenderingContext2D, message: string, width: number, height: number): void {
   context.save();
-  context.font = '15px system-ui, sans-serif';
-  context.fillStyle = '#d5dee8';
+  context.font = '15px Inter, system-ui, sans-serif';
+  context.fillStyle = '#62666b';
   context.textAlign = 'center';
   context.textBaseline = 'middle';
   const lines = wrap(context, message, width - 32);

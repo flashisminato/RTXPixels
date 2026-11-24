@@ -13,18 +13,39 @@ import type { DisplayStep, HitStep, PixelStep, ReflectStep, ShadeStep } from './
  */
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+/** Same values and meanings as src/styles/tokens.css (SVG attributes cannot read CSS variables). */
 export const COLORS = {
-  ink: '#1d1d1f',
-  guide: '#8b8e90',
-  plane: '#eceeed',
-  grid: '#d2d5d4',
-  ray: '#df262e',
-  rayTint: '#fbd9da',
-  shadow: '#7b83e6',
-  bulb: '#fff6d2',
+  ink: '#171717',        // geometry, surfaces, normals
+  guide: '#9ca3af',      // construction: dashed lines, dimensions, inactive geometry
+  plane: '#ecece9',      // physical planes (grayscale shading is allowed inside illustrations)
+  grid: '#e0e0dc',
+  ray: '#d52232',        // signal: the followed camera ray D, the selected pixel, selected intersections
+  rayTint: '#f7d6d9',
+  science: '#245ba7',    // secondary rays: reflected R and shadow ray L
+  bulb: '#fbf7e8',
 } as const;
-const MATH_FONT = '"STIX Two Text", "Times New Roman", Times, serif';
-const SANS_FONT = '"Helvetica Neue", Helvetica, Arial, system-ui, sans-serif';
+const MATH_FONT = "'FAP Math', 'Latin Modern Math', 'STIX Two Math', serif";
+const SANS_FONT = "'Inter', system-ui, -apple-system, sans-serif";
+
+/**
+ * SVG cannot ask the math font for its italic the way MathML does (the browser
+ * would fake a slant), so italic and bold runs are mapped to Unicode's
+ * mathematical alphanumeric characters, which FAP Math draws in true Latin
+ * Modern shapes. Figure labels then match the equations exactly.
+ */
+function mathAlphabet(text: string, style: 'italic' | 'bold'): string {
+  let out = '';
+  for (const ch of text) {
+    const c = ch.codePointAt(0)!;
+    if (style === 'italic' && ch === 'h') out += '\u210e'; // Planck constant: the math-italic h
+    else if (c >= 65 && c <= 90) out += String.fromCodePoint((style === 'bold' ? 0x1d400 : 0x1d434) + c - 65);
+    else if (c >= 97 && c <= 122) out += String.fromCodePoint((style === 'bold' ? 0x1d41a : 0x1d44e) + c - 97);
+    else if (c >= 0x3b1 && c <= 0x3c9) out += String.fromCodePoint((style === 'bold' ? 0x1d6c2 : 0x1d6fc) + c - 0x3b1);
+    else if (c >= 0x391 && c <= 0x3a9 && style === 'bold') out += String.fromCodePoint(0x1d6a8 + c - 0x391);
+    else out += ch;
+  }
+  return out;
+}
 
 type Attrs = Record<string, string | number>;
 type Pt = { x: number; y: number };
@@ -59,7 +80,7 @@ class Figure {
     this.id = `mf${++figureCounter}`;
     this.root = svg('svg', { viewBox: `0 0 ${width} ${height}`, role: 'img', 'aria-label': label, class: 'math-figure' });
     const defs = svg('defs');
-    for (const [name, color] of Object.entries({ ink: COLORS.ink, ray: COLORS.ray, shadow: COLORS.shadow, guide: COLORS.guide })) {
+    for (const [name, color] of Object.entries({ ink: COLORS.ink, ray: COLORS.ray, science: COLORS.science, guide: COLORS.guide })) {
       defs.append(svg('marker', {
         id: `${this.id}-${name}`, viewBox: '0 0 10 10', refX: 9, refY: 5,
         markerWidth: 9, markerHeight: 9, markerUnits: 'userSpaceOnUse', orient: 'auto-start-reverse',
@@ -79,7 +100,7 @@ class Figure {
 
   add<T extends SVGElement>(element: T): T { this.layer.append(element); return element; }
 
-  line(a: Pt, b: Pt, o: { color?: string; width?: number; dash?: string; arrow?: 'ink' | 'ray' | 'shadow' | 'guide'; start?: boolean } = {}): SVGLineElement {
+  line(a: Pt, b: Pt, o: { color?: string; width?: number; dash?: string; arrow?: 'ink' | 'ray' | 'science' | 'guide'; start?: boolean } = {}): SVGLineElement {
     const attrs: Attrs = { x1: a.x, y1: a.y, x2: b.x, y2: b.y, stroke: o.color ?? COLORS.ink, 'stroke-width': o.width ?? 1.4, 'stroke-linecap': 'round' };
     if (o.dash) attrs['stroke-dasharray'] = o.dash;
     if (o.arrow) attrs['marker-end'] = `url(#${this.id}-${o.arrow})`;
@@ -87,12 +108,12 @@ class Figure {
     return this.add(svg('line', attrs));
   }
 
-  arrow(a: Pt, b: Pt, kind: 'ink' | 'ray' | 'shadow' | 'guide' = 'ink', width = 1.5, dash?: string): SVGLineElement {
-    const color = kind === 'ray' ? COLORS.ray : kind === 'shadow' ? COLORS.shadow : kind === 'guide' ? COLORS.guide : COLORS.ink;
+  arrow(a: Pt, b: Pt, kind: 'ink' | 'ray' | 'science' | 'guide' = 'ink', width = 1.5, dash?: string): SVGLineElement {
+    const color = kind === 'ray' ? COLORS.ray : kind === 'science' ? COLORS.science : kind === 'guide' ? COLORS.guide : COLORS.ink;
     return this.line(a, b, { color, width, arrow: kind, dash });
   }
 
-  path(d: string, o: { stroke?: string; fill?: string; width?: number; dash?: string; arrow?: 'ink' | 'ray' | 'shadow' | 'guide' } = {}): SVGPathElement {
+  path(d: string, o: { stroke?: string; fill?: string; width?: number; dash?: string; arrow?: 'ink' | 'ray' | 'science' | 'guide' } = {}): SVGPathElement {
     const attrs: Attrs = { d, stroke: o.stroke ?? COLORS.ink, fill: o.fill ?? 'none', 'stroke-width': o.width ?? 1.4, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' };
     if (o.dash) attrs['stroke-dasharray'] = o.dash;
     if (o.arrow) attrs['marker-end'] = `url(#${this.id}-${o.arrow})`;
@@ -161,11 +182,11 @@ class Figure {
     for (const run of runs) {
       const r = typeof run === 'string' ? { t: run } : run;
       const target = r.sub ? 0.32 : r.sup ? -0.42 : 0;
-      const span = svg('tspan', {}, [r.t]);
+      const glyphs = r.b ? mathAlphabet(r.t, 'bold') : r.i ? mathAlphabet(r.t, 'italic') : r.t;
+      const span = svg('tspan', {}, [glyphs]);
       if (target !== shift) { span.setAttribute('dy', `${(target - shift).toFixed(2)}em`); shift = target; }
       if (r.sub || r.sup) span.setAttribute('font-size', '72%');
-      if (r.b) { span.setAttribute('font-weight', '700'); span.setAttribute('font-style', 'normal'); }
-      else if (r.i) span.setAttribute('font-style', 'italic');
+      // Bold and italic come from the glyphs themselves (mathAlphabet), never synthesized.
       text.append(span);
     }
     return this.add(text);
@@ -427,9 +448,9 @@ export function reflectionFigure(r: ReflectStep): SVGSVGElement {
   const out = plus(P, times(pt(Math.sin(tr), -Math.cos(tr)), L));
   f.line(start, between(start, P, 0.5), { color: COLORS.ray, width: 1.9, arrow: 'ray' });
   f.line(between(start, P, 0.48), P, { color: COLORS.ray, width: 1.9 });
-  f.line(P, out, { color: COLORS.ray, width: 1.9, arrow: 'ray' });
+  f.line(P, out, { color: COLORS.science, width: 1.9, arrow: 'science' });
   f.math(plus(between(start, P, 0.42), pt(-16, -4)), B('D'), { anchor: 'end', color: COLORS.ray, size: 18 });
-  f.math(plus(between(P, out, 0.62), pt(14, -4)), B('R'), { color: COLORS.ray, size: 18 });
+  f.math(plus(between(P, out, 0.62), pt(14, -4)), B('R'), { color: COLORS.science, size: 18 });
 
   f.arc(P, 52, -90 - r.thetaI, -90);
   f.arc(P, 60, -90, -90 + r.thetaR);
@@ -468,11 +489,11 @@ export function shadingFigure(s: ShadeStep): SVGSVGElement {
   if (facesAway) {
     // The light is behind the tangent plane: phi > 90 degrees, drawn at its true angle.
     const light = plus(P, times(dir, 250));
-    f.line(P, plus(light, times(dir, -24)), { color: COLORS.shadow, width: 1.8, dash: '5 4', arrow: 'shadow' });
+    f.line(P, plus(light, times(dir, -24)), { color: COLORS.science, width: 1.8, dash: '5 4', arrow: 'science' });
     f.cross(plus(P, times(dir, 16)), 5);
     f.bulb(light);
     f.words(plus(light, pt(-4, -34)), 'light, behind the surface', { anchor: 'middle', size: 12.5, color: '#333' });
-    f.math(plus(between(P, light, 0.62), pt(0, -16)), B('L'), { anchor: 'middle', color: COLORS.shadow, size: 18 });
+    f.math(plus(between(P, light, 0.62), pt(0, -16)), B('L'), { anchor: 'middle', color: COLORS.science, size: 18 });
     f.arc(P, 48, -90, -90 + s.phiDeg);
     const lp = plus(P, times(pt(Math.cos(rad(-90 + s.phiDeg * 0.42)), Math.sin(rad(-90 + s.phiDeg * 0.42))), 70));
     f.math(lp, [{ t: 'φ', i: true }, ` = ${s.phiDeg.toFixed(1)}° > 90°`], { size: 15 });
@@ -484,16 +505,16 @@ export function shadingFigure(s: ShadeStep): SVGSVGElement {
     if (s.blocked && !s.selfBlocked) {
       const blocker = plus(stop, times(dir, 24));
       f.circle(blocker, 24, f.sphereFill(), COLORS.ink, 1.3);
-      f.line(P, stop, { color: COLORS.shadow, width: 1.9 });
+      f.line(P, stop, { color: COLORS.science, width: 1.9 });
       f.line(plus(blocker, times(dir, 24)), plus(light, times(dir, -24)), { color: COLORS.guide, width: 1.1, dash: '4 4' });
       f.cross(stop, 5.5);
       f.words(plus(blocker, pt(30, 2)), `blocked by the ${s.blockerName}`, { size: 12.5, color: '#333' });
     } else {
-      f.line(P, plus(light, times(dir, -24)), { color: COLORS.shadow, width: 1.9, arrow: 'shadow' });
+      f.line(P, plus(light, times(dir, -24)), { color: COLORS.science, width: 1.9, arrow: 'science' });
     }
     f.bulb(light);
     f.words(plus(light, pt(28, -2)), 'light', { size: 13 });
-    f.math(plus(between(P, light, 0.55), plus(times(perp(dir), 16), pt(0, 0))), B('L'), { anchor: 'middle', color: COLORS.shadow, size: 18 });
+    f.math(plus(between(P, light, 0.55), plus(times(perp(dir), 16), pt(0, 0))), B('L'), { anchor: 'middle', color: COLORS.science, size: 18 });
     // Measure d on the open side of the ray, away from the normal.
     // Start a little up the ray so the offset line never dips below the surface.
     f.dimension(plus(P, times(dir, 34)), plus(light, times(dir, -18)), 40, [I('d')]);
@@ -554,9 +575,9 @@ export function displayFigure(d: DisplayStep): SVGSVGElement {
     f.path(sample(c => c / (1 + c)), { stroke: COLORS.ink, width: 1.3, dash: '5 4' });
     f.math(pt(X(xMax) - 4, Y(xMax / (1 + xMax)) + 16), [I('c'), ' / (1 + ', I('c'), ')'], { anchor: 'end', size: 14 });
   }
-  f.path(sample(c => displayCurve(d.mode, c)), { stroke: COLORS.ray, width: 2 });
+  f.path(sample(c => displayCurve(d.mode, c)), { stroke: COLORS.ink, width: 1.8 });
   const curveLabel: Run[] = d.mode === 'beauty' ? ['sRGB(', I('c'), ' / (1 + ', I('c'), '))'] : d.mode === 'albedo' ? ['sRGB(', I('c'), ')'] : [I('c')];
-  f.math(pt(X(xMax) - 4, Y(displayCurve(d.mode, xMax)) - 14), curveLabel, { anchor: 'end', color: COLORS.ray, size: 14 });
+  f.math(pt(X(xMax) - 4, Y(displayCurve(d.mode, xMax)) - 14), curveLabel, { anchor: 'end', color: COLORS.ink, size: 14 });
 
   const channelColors = ['#d23b3b', '#2f9a44', '#3b63d2'];
   // Legend box first, so it sits behind its entries.

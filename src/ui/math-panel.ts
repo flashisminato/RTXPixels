@@ -286,7 +286,7 @@ function displaySection(out: Sections, story: MathStory): void {
       ? ['Light values can exceed 1, so each channel is compressed with ', X(frac(mi('c'), row(mn('1'), plus(), mi('c')))), ', encoded for the screen (sRGB), then rounded to an 8-bit number.']
       : d.mode === 'albedo' ? ['The surface color is encoded for the screen (sRGB) without tone mapping.'] : ['The hit view shows pure white or black, with no conversion.'],
     figure: displayFigure(d),
-    caption: ['Display curve (red) with this pixel’s red, green and blue values marked, and the resulting color. The equations apply to each channel ', S('c'), ' separately.'],
+    caption: ['Display curve with this pixel’s red, green and blue values marked, and the resulting color. The equations apply to each channel ', S('c'), ' separately.'],
     equations,
   });
 }
