@@ -1,4 +1,4 @@
-# How Do Rays Reflect in Games? Visualization of ray-tracing system using WebGL renderer
+# How do rays reflect in games? Visualization of a ray-tracing system using a WebGL renderer
 
 The app renders the original room through **AI 1's real WebGL2 renderer**, capped at 640×360, with spheres, planes, a perfect mirror, direct matte lighting and hard shadows. A cancelable **160×90 CPU fallback** handles unavailable or lost graphics contexts. Both buffers fit the host aspect. Click the image to inspect actual CPU ray events for the same frame, select a computed mirror example, or reset. No API keys or runtime services.
 
