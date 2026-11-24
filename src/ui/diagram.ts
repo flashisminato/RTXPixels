@@ -1,7 +1,7 @@
 import type { Scene, Vec3 } from '../contracts.ts';
 import { CANVAS_LABEL, screenMapper, type DiagramPlan, type PlanSegment } from './explain.ts';
 import { COLORS, Figure, plus, pt, times, unit, type Pt, type Run } from './math-figures.ts';
-import { aroundPoint, clipSegment, linearColumns, placeLabel, sphereOutline, type Candidate, type Obstacles, type Rect } from './schematic-geometry.ts';
+import { aroundPoint, clipSegment, linearColumns, placeLabel, sphereOutline, worldDeltaAlong, type Candidate, type Obstacles, type Rect, type ScreenPoint } from './schematic-geometry.ts';
 
 /**
  * Figure 2.1: the schematic of the computed path, as a textbook SVG figure.
@@ -21,20 +21,112 @@ const PLOT: Rect = { x0: 10, y0: 10, x1: W - 10, y1: H - 10 };
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 
-export function createDiagram(host: HTMLElement): { show(plan: DiagramPlan | null, message: string, scene?: Scene | null): void; dispose(): void } {
-  return {
-    show(plan, message, scene = null) { host.replaceChildren(render(plan, message, scene)); },
-    dispose() { host.replaceChildren(); },
+type Range = { min: number; max: number; step: number };
+/** Current values and ranges of the two objects the figure lets you move. */
+export type Handles = { targetX: number; lightX: number; ranges: { targetX: Range; lightX: Range } };
+type HandleKind = 'target' | 'light';
+
+/**
+ * Figure 2.1 host. When `onAdjust` is supplied, the coloured sphere and the
+ * light are direct-manipulation handles: drag them along x, or focus them and
+ * use the arrow keys. Listeners and pointer capture live on the persistent host,
+ * because the figure is rebuilt on every update.
+ */
+export function createDiagram(host: HTMLElement, onAdjust?: (kind: HandleKind, x: number) => void): {
+  show(plan: DiagramPlan | null, message: string, scene?: Scene | null, handles?: Handles | null): void; dispose(): void;
+} {
+  let axisX: ScreenPoint | null = null;   // screen image of world +x in the current figure
+  let handles: Handles | null = null;
+  let drag: { kind: HandleKind; pointer: number; start: ScreenPoint; startX: number; axis: ScreenPoint } | null = null;
+  const value = (kind: HandleKind) => kind === 'target' ? handles?.targetX : handles?.lightX;
+  const range = (kind: HandleKind) => kind === 'target' ? handles?.ranges.targetX : handles?.ranges.lightX;
+
+  const onDown = (e: PointerEvent) => {
+    const el = e.target instanceof Element ? e.target.closest('[data-drag]') : null;
+    const kind = el?.getAttribute('data-drag') as HandleKind | null;
+    const startX = kind ? value(kind) : undefined;
+    if (!onAdjust || !kind || startX === undefined || !axisX) return;
+    // The figure refits its scale as objects move, so the drag keeps the scale it started with.
+    drag = { kind, pointer: e.pointerId, start: { x: e.clientX, y: e.clientY }, startX, axis: { ...axisX } };
+    host.setPointerCapture(e.pointerId);
+    (el as SVGElement).focus({ preventScroll: true });
+    host.classList.add('is-dragging');
+    e.preventDefault();
   };
+  const onMove = (e: PointerEvent) => {
+    if (!drag || drag.pointer !== e.pointerId || !onAdjust) return;
+    const svgEl = host.querySelector('svg');
+    const scale = svgEl ? svgEl.viewBox.baseVal.width / svgEl.getBoundingClientRect().width : 1; // CSS px -> viewBox units
+    const delta = { x: (e.clientX - drag.start.x) * scale, y: (e.clientY - drag.start.y) * scale };
+    onAdjust(drag.kind, drag.startX + worldDeltaAlong(delta, drag.axis));
+  };
+  const onUp = (e: PointerEvent) => {
+    if (!drag || drag.pointer !== e.pointerId) return;
+    drag = null;
+    host.releasePointerCapture?.(e.pointerId);
+    host.classList.remove('is-dragging');
+  };
+  const onKey = (e: KeyboardEvent) => {
+    const kind = e.target instanceof Element ? e.target.getAttribute('data-drag') as HandleKind | null : null;
+    const r = kind ? range(kind) : undefined;
+    const now = kind ? value(kind) : undefined;
+    if (!onAdjust || !kind || !r || now === undefined) return;
+    const next = e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? now - r.step
+      : e.key === 'ArrowRight' || e.key === 'ArrowUp' ? now + r.step
+        : e.key === 'Home' ? r.min : e.key === 'End' ? r.max : null;
+    if (next === null) return;
+    e.preventDefault();
+    onAdjust(kind, Math.min(r.max, Math.max(r.min, next)));
+  };
+  host.addEventListener('pointerdown', onDown);
+  host.addEventListener('pointermove', onMove);
+  host.addEventListener('pointerup', onUp);
+  host.addEventListener('pointercancel', onUp);
+  host.addEventListener('keydown', onKey);
+
+  return {
+    show(plan, message, scene = null, next = null) {
+      handles = next;
+      // While dragging, the scene briefly has no inspection between frames: hold the last figure.
+      if (drag && !plan) return;
+      const focused = document.activeElement instanceof Element && host.contains(document.activeElement)
+        ? document.activeElement.getAttribute('data-drag') : null;
+      const result = render(plan, message, scene, onAdjust ? handles : null);
+      axisX = result.axisX;
+      host.replaceChildren(result.svg);
+      if (focused) host.querySelector<SVGElement>(`[data-drag="${focused}"]`)?.focus({ preventScroll: true });
+    },
+    dispose() {
+      host.removeEventListener('pointerdown', onDown);
+      host.removeEventListener('pointermove', onMove);
+      host.removeEventListener('pointerup', onUp);
+      host.removeEventListener('pointercancel', onUp);
+      host.removeEventListener('keydown', onKey);
+      host.replaceChildren();
+    },
+  };
+}
+
+/** Make an SVG element an accessible slider handle for one of the two movable objects. */
+function makeHandle(el: SVGElement, kind: HandleKind, label: string, x: number, r: Range): void {
+  el.setAttribute('data-drag', kind);
+  el.setAttribute('tabindex', '0');
+  el.setAttribute('role', 'slider');
+  el.setAttribute('aria-label', `${label}: drag sideways or use the arrow keys`);
+  el.setAttribute('aria-valuemin', String(r.min));
+  el.setAttribute('aria-valuemax', String(r.max));
+  el.setAttribute('aria-valuenow', x.toFixed(2));
+  el.setAttribute('aria-valuetext', `x = ${x.toFixed(2)}`);
+  el.classList.add('handle');
 }
 
 const B = (t: string, sub?: string): Run[] => sub ? [{ t, b: true }, { t: sub, sub: true }] : [{ t, b: true }];
 
-function render(plan: DiagramPlan | null, message: string, scene: Scene | null): SVGSVGElement {
+function render(plan: DiagramPlan | null, message: string, scene: Scene | null, handles: Handles | null): { svg: SVGSVGElement; axisX: ScreenPoint | null } {
   const f = new Figure(W, H, `${plan?.canvasLabel ?? CANVAS_LABEL} ${message}`);
   if (!plan || (plan.segments.length === 0 && plan.marks.length === 0)) {
     f.words(pt(W / 2, H / 2), message, { anchor: 'middle', color: '#62666b', size: 15 });
-    return f.root;
+    return { svg: f.root, axisX: null };
   }
 
   // Spheres of the scene, drawn for context from their real geometry.
@@ -56,7 +148,7 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null):
   const map = screenMapper(points, W, H, PAD);
   if (!map) {
     f.words(pt(W / 2, H / 2), message, { anchor: 'middle', color: '#62666b', size: 15 });
-    return f.root;
+    return { svg: f.root, axisX: null };
   }
 
   const toScreen = (p: Vec3): Pt => map(p);
@@ -66,12 +158,13 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null):
 
   // Spheres from real geometry: exact projected ellipses.
   const outlines = spheres.map(sphere => ({ sphere, e: sphereOutline(map, sphere.center, sphere.radius) }));
-  for (const { e } of outlines) {
+  for (const { sphere, e } of outlines) {
     const ellipse = document.createElementNS(SVG_NS, 'ellipse');
     for (const [k, v] of Object.entries({ cx: e.cx, cy: e.cy, rx: e.rx, ry: e.ry, fill: f.sphereFill(), stroke: COLORS.ink, 'stroke-width': 1.1, 'fill-opacity': 0.9 })) {
       ellipse.setAttribute(k, String(v));
     }
     ellipse.setAttribute('transform', `rotate(${e.angleDeg.toFixed(2)} ${e.cx.toFixed(2)} ${e.cy.toFixed(2)})`);
+    if (handles && sphere.id === 'target') makeHandle(ellipse, 'target', 'Colored object position', handles.targetX, handles.ranges.targetX);
     f.add(ellipse);
     obstacles.ellipses.push(e);
   }
@@ -158,7 +251,8 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null):
       f.cross(at, 5);
       pending.push({ at, runs: [mark.label], color: '#62666b', size: 13, candidates: aroundPoint(12) });
     } else if (mark.role === 'light') {
-      f.bulb(at);
+      const bulb = f.ref('light', () => { f.circle(at, 22, 'transparent', 'none'); f.bulb(at); });
+      if (handles) makeHandle(bulb, 'light', 'Light position', handles.lightX, handles.ranges.lightX);
       obstacles.boxes.push({ x0: at.x - 22, y0: at.y - 22, x1: at.x + 22, y1: at.y + 18 });
       pending.push({ at, runs: ['light'], color: '#62666b', size: 13, candidates: aroundPoint(26) });
     } else {
@@ -182,6 +276,6 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null):
     const chosen = placeLabel(label.at, width, label.size * 1.1, label.candidates, obstacles, PLOT);
     f.math(pt(chosen.x, chosen.y), label.runs, { anchor: chosen.anchor, color: label.color, size: label.size });
   }
-  return f.root;
+  return { svg: f.root, axisX: linearColumns(map)[0] };
 }
 

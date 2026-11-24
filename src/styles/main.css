@@ -228,3 +228,18 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 .d-rhs { justify-self: start; }
 /* Derivation steps are display mathematics: full-size fractions, not text style. */
 .derivation math { math-style: normal; }
+
+/* ---- P5: direct manipulation and linked highlighting ----------------------------- */
+[data-drag] { cursor: grab; touch-action: none; outline: none; }
+.is-dragging, .is-dragging [data-drag] { cursor: grabbing; }
+[data-drag]:focus-visible { stroke: var(--ink); stroke-width: 2.4; stroke-dasharray: 4 3; }
+.ray-diagram .handle:hover { stroke-width: 1.8; }
+/* Linked terms and figure elements: the equation term gets a light signal tint;
+   the figure element is drawn in signal red (CSS beats SVG presentation attributes). */
+.math-paper math .ref { transition: background-color 120ms ease; border-radius: 2px; }
+.math-paper math .ref.is-linked { background-color: rgba(213, 34, 50, 0.12); color: var(--signal); }
+.math-figure g.ref { transition: opacity 120ms ease; }
+.math-figure .hit { pointer-events: stroke; }
+.math-figure g.ref.is-linked line:not(.hit), .math-figure g.ref.is-linked path:not(.hit), .math-figure g.ref.is-linked circle:not([fill='transparent']) { stroke: var(--signal) !important; }
+.math-figure g.ref.is-linked text { fill: var(--signal) !important; }
+.math-figure g.ref.is-linked line:not(.hit), .math-figure g.ref.is-linked path:not(.hit) { stroke-width: 2.4; }

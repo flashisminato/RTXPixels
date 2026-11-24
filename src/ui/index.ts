@@ -229,7 +229,11 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   shell.append(header, toc.nav, doc, record);
   root.replaceChildren(shell);
 
-  const diagram = createDiagram(diagramHost);
+  // Figure 2.1's handles move the real objects, through the same snapping as the sliders.
+  const diagram = createDiagram(diagramHost, (kind, x) => {
+    if (kind === 'target') commitNumber(x, CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
+    else commitNumber(x, CONTROL_RANGES.lightX, current?.controls.lightX, snapped => actions.dispatch({ type: 'light-x', value: snapped }));
+  });
 
   function placeMarker(): void {
     if (!selection) {
@@ -330,8 +334,11 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
         return li;
       }));
       events.hidden = explanation.items.length === 0;
-      renderMathPanel(mathBody, view);
-      diagram.show(explanation.diagram, explanation.summary, view.scene);
+      renderMathPanel(mathBody, view, {
+        inspectAt(u, v) { selection = { u, v }; placeMarker(); actions.inspectAt(u, v); },
+      });
+      diagram.show(explanation.diagram, explanation.summary, view.scene,
+        { targetX: view.controls.targetX, lightX: view.controls.lightX, ranges: { targetX: CONTROL_RANGES.targetX, lightX: CONTROL_RANGES.lightX } });
     },
     dispose() {
       if (disposed) return;

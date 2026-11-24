@@ -71,3 +71,13 @@ test('placeLabel avoids crossing lines, sphere outlines and earlier labels', asy
   const off = placeLabel({ x: 200, y: 150 }, 40, 14, aroundPoint(14), ring, bounds);
   assert.ok(off.cost < 7, `label still straddles the outline (cost ${off.cost})`);
 });
+
+test('worldDeltaAlong converts a screen drag into world x through the projection', async () => {
+  const { worldDeltaAlong, linearColumns } = await import('../../src/ui/schematic-geometry.ts');
+  const [cx] = linearColumns(map);
+  // Dragging exactly along the screen image of +x by 2.5 units moves 2.5 units.
+  assert.ok(Math.abs(worldDeltaAlong({ x: cx.x * 2.5, y: cx.y * 2.5 }, cx) - 2.5) < 1e-12);
+  // A drag perpendicular to it does not move the object along x.
+  assert.ok(Math.abs(worldDeltaAlong({ x: -cx.y * 3, y: cx.x * 3 }, cx)) < 1e-12);
+  assert.equal(worldDeltaAlong({ x: 5, y: 5 }, { x: 0, y: 0 }), 0);
+});

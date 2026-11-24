@@ -160,3 +160,12 @@ export function segmentsCross(p1: ScreenPoint, p2: ScreenPoint, q1: ScreenPoint,
   const d1 = cross(q1, q2, p1), d2 = cross(q1, q2, p2), d3 = cross(p1, p2, q1), d4 = cross(p1, p2, q2);
   return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
 }
+
+/**
+ * World-space distance along an axis for a screen-space drag: the projection of
+ * the drag onto the axis' screen image, divided by that image's squared length.
+ */
+export function worldDeltaAlong(drag: ScreenPoint, axis: ScreenPoint): number {
+  const len2 = axis.x * axis.x + axis.y * axis.y;
+  return len2 > 0 ? (drag.x * axis.x + drag.y * axis.y) / len2 : 0;
+}

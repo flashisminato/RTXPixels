@@ -74,7 +74,7 @@ const clamp = (value: number, lo: number, hi: number): number => Math.min(hi, Ma
 export class Figure {
   readonly root: SVGSVGElement;
   private readonly id: string;
-  private readonly layer: SVGGElement;
+  private layer: SVGGElement;
 
   constructor(width: number, height: number, label: string) {
     this.id = `mf${++figureCounter}`;
@@ -97,6 +97,30 @@ export class Figure {
   }
 
   sphereFill(): string { return `url(#${this.id}-sphere)`; }
+
+  /**
+   * Draw into a <g data-ref="name"> so the drawing can be linked to the equation
+   * terms carrying the same data-ref (bidirectional highlighting, P5).
+   */
+  ref(name: string, draw: () => void): SVGGElement {
+    const group = svg('g', { 'data-ref': name, class: 'ref' });
+    this.layer.append(group);
+    const previous = this.layer;
+    this.layer = group;
+    try { draw(); } finally { this.layer = previous; }
+    // Thin strokes are hard to point at: give every linked line or path an
+    // invisible 12-unit hit stroke underneath, so hovering near it counts.
+    for (const el of [...group.querySelectorAll('line, path')]) {
+      const hit = el.cloneNode(false) as SVGElement;
+      for (const attr of ['marker-end', 'marker-start', 'stroke-dasharray']) hit.removeAttribute(attr);
+      hit.setAttribute('stroke', 'transparent');
+      hit.setAttribute('stroke-width', '12');
+      hit.setAttribute('fill', 'none');
+      hit.setAttribute('class', 'hit');
+      group.insertBefore(hit, group.firstChild);
+    }
+    return group;
+  }
 
   add<T extends SVGElement>(element: T): T { this.layer.append(element); return element; }
 
@@ -273,6 +297,17 @@ export function pixelToRayFigure(p: PixelStep): SVGSVGElement {
   f.words(pt(ox + w / 2, oy + h + 74), 'Image space', { anchor: 'middle', size: 14 });
   f.words(pt(ox + w / 2, oy + h + 92), 'pixels, origin at the top left', { anchor: 'middle', size: 12, color: '#555' });
 
+  // The image-space grid is a direct-manipulation handle: drag (or use the arrow
+  // keys) to select a pixel. A transparent overlay on top of the whole grid takes
+  // the pointer, so the highlighted cell and labels drawn above the grid cannot
+  // swallow the press. math-panel.ts maps the pointer through this rect.
+  const handle = f.rect(ox, oy, w, h, 'transparent', 'none');
+  handle.setAttribute('data-drag', 'pixel-grid');
+  handle.setAttribute('tabindex', '0');
+  handle.setAttribute('role', 'slider');
+  handle.setAttribute('aria-label', `Selected pixel ${p.x}, ${p.y}. Drag or use the arrow keys to choose another pixel.`);
+  handle.setAttribute('aria-valuetext', `column ${p.x}, row ${p.y}`);
+
   // Camera space (right): oblique sketch of r, u, f and the sensor at depth 1.
   const E = pt(452, 272);
   const rDir = unit(pt(0.97, 0.24));
@@ -298,30 +333,34 @@ export function pixelToRayFigure(p: PixelStep): SVGSVGElement {
 
   // Half-height k on the right edge.
   const rTop = corner(1, 1), rMid = corner(1, 0);
-  f.line(plus(rMid, pt(10, 0)), plus(rTop, pt(10, 0)), { color: COLORS.ink, width: 1 });
-  f.line(plus(rMid, pt(6, 0)), plus(rMid, pt(14, 0)), { color: COLORS.ink, width: 1 });
-  f.line(plus(rTop, pt(6, 0)), plus(rTop, pt(14, 0)), { color: COLORS.ink, width: 1 });
-  f.math(plus(between(rMid, rTop, 0.5), pt(18, 0)), [I('k')], { size: 16 });
+  f.ref('k', () => {
+    f.line(plus(rMid, pt(10, 0)), plus(rTop, pt(10, 0)), { color: COLORS.ink, width: 1 });
+    f.line(plus(rMid, pt(6, 0)), plus(rMid, pt(14, 0)), { color: COLORS.ink, width: 1 });
+    f.line(plus(rTop, pt(6, 0)), plus(rTop, pt(14, 0)), { color: COLORS.ink, width: 1 });
+    f.math(plus(between(rMid, rTop, 0.5), pt(18, 0)), [I('k')], { size: 16 });
+  });
 
   const sensorPoint = plus(centre, plus(times(rDir, p.sx * p.k * scale), times(uDir, p.sy * p.k * scale)));
   f.rect(sensorPoint.x - 7, sensorPoint.y - 7, 14, 14, 'none', COLORS.ray, { 'stroke-dasharray': '3 2.5', 'stroke-width': 1.1 });
   const rayDir = unit(pt(sensorPoint.x - E.x, sensorPoint.y - E.y));
-  f.line(E, sensorPoint, { color: COLORS.ray, width: 1.8 });
   const rayEnd = plus(sensorPoint, times(rayDir, 112));
-  f.line(sensorPoint, rayEnd, { color: COLORS.ray, width: 1.6, dash: '5 4', arrow: 'ray' });
+  f.ref('D', () => {
+    f.line(E, sensorPoint, { color: COLORS.ray, width: 1.8 });
+    f.line(sensorPoint, rayEnd, { color: COLORS.ray, width: 1.6, dash: '5 4', arrow: 'ray' });
+    f.math(plus(rayEnd, pt(6, -8)), B('D'), { color: COLORS.ray, size: 18 });
+  });
   f.dot(sensorPoint, COLORS.ray, 3.4);
-  f.math(plus(rayEnd, pt(6, -8)), B('D'), { color: COLORS.ray, size: 18 });
   // Callout: the point's coordinates sit below the sensor, joined by a dashed leader,
   // because the arc, the ray and the axes leave no free side around the point itself.
   const bottomEdgeY = corner(-1, -1).y + (sensorPoint.x - corner(-1, -1).x) * (rDir.y / rDir.x);
   const callout = pt(sensorPoint.x, bottomEdgeY + 30);
   f.line(sensorPoint, pt(callout.x, callout.y - 10), { color: COLORS.ray, width: 1, dash: '2 3' });
-  f.math(callout, ['(', I('s'), { t: 'x', sub: true, i: true }, I('k'), ', ', I('s'), { t: 'y', sub: true, i: true }, I('k'), ', 1)'],
-    { anchor: 'middle', color: COLORS.ray, size: 14 });
+  f.ref('s', () => f.math(callout, ['(', I('s'), { t: 'x', sub: true, i: true }, I('k'), ', ', I('s'), { t: 'y', sub: true, i: true }, I('k'), ', 1)'],
+    { anchor: 'middle', color: COLORS.ray, size: 14 }));
 
-  f.math(plus(E, plus(times(rDir, 232), pt(8, 6))), B('r'), { size: 18 });
-  f.math(plus(E, pt(-8, -214)), B('u'), { anchor: 'end', size: 18 });
-  f.math(plus(centre, plus(times(fDir, 150), pt(6, -6))), B('f'), { size: 18 });
+  f.ref('r', () => f.math(plus(E, plus(times(rDir, 232), pt(8, 6))), B('r'), { size: 18 }));
+  f.ref('u', () => f.math(plus(E, pt(-8, -214)), B('u'), { anchor: 'end', size: 18 }));
+  f.ref('f', () => f.math(plus(centre, plus(times(fDir, 150), pt(6, -6))), B('f'), { size: 18 }));
   f.words(plus(centre, plus(times(fDir, 150), pt(-4, -24))), 'viewing direction', { anchor: 'end', size: 12, color: '#555' });
   f.dot(E, COLORS.ink, 4);
   f.math(plus(E, pt(-10, 16)), B('O'), { anchor: 'end', size: 17 });
@@ -371,10 +410,11 @@ function sphereFigure(hit: HitStep): SVGSVGElement {
   f.path(`M${foot.x - 8},${foot.y} L${foot.x - 8},${foot.y + 8} L${foot.x},${foot.y + 8}`, { stroke: COLORS.guide, width: 1 });
   // Radius.
   const radiusEnd = plus(C, times(pt(Math.cos(rad(40)), Math.sin(rad(40))), R));
-  f.line(C, radiusEnd, { color: COLORS.ink, width: 1.1, dash: '5 3' });
-  f.math(plus(between(C, radiusEnd, 0.55), pt(8, -10)), [I('R')], { size: 16 });
-  f.dot(C);
-  f.math(plus(C, pt(-10, 18)), B('C'), { anchor: 'end' });
+  f.ref('radius', () => {
+    f.line(C, radiusEnd, { color: COLORS.ink, width: 1.1, dash: '5 3' });
+    f.math(plus(between(C, radiusEnd, 0.55), pt(8, -10)), [I('R')], { size: 16 });
+  });
+  f.ref('C', () => { f.dot(C); f.math(plus(C, pt(-10, 18)), B('C'), { anchor: 'end' }); });
 
   // The ray: red to the hit, dotted through the far side.
   f.line(O, P, { color: COLORS.ray, width: 1.9 });
@@ -391,14 +431,18 @@ function sphereFigure(hit: HitStep): SVGSVGElement {
   // Normal at the hit.
   const n = unit(pt(P.x - C.x, P.y - C.y));
   const normalEnd = plus(P, times(n, 46));
-  f.arrow(P, normalEnd, 'ink', 1.6);
-  f.math(plus(normalEnd, pt(n.x < 0 ? -8 : 8, -4)), B('N'), { anchor: n.x < 0 ? 'end' : 'start' });
-  f.dot(P, COLORS.ray, 3.8);
-  f.math(plus(P, pt(inside ? 8 : -18, inside ? 18 : 22)), B('P'), { anchor: inside ? 'start' : 'end', color: COLORS.ray });
+  f.ref('N', () => {
+    f.arrow(P, normalEnd, 'ink', 1.6);
+    f.math(plus(normalEnd, pt(n.x < 0 ? -8 : 8, -4)), B('N'), { anchor: n.x < 0 ? 'end' : 'start' });
+  });
+  f.ref('P', () => {
+    f.dot(P, COLORS.ray, 3.8);
+    f.math(plus(P, pt(inside ? 8 : -18, inside ? 18 : 22)), B('P'), { anchor: inside ? 'start' : 'end', color: COLORS.ray });
+  });
 
   // t = -h -/+ sqrt(delta), drawn as two measured segments along the ray.
-  f.dimension(O, foot, -58, [{ t: '−', i: false }, I('h')]);
-  f.dimension(P, foot, inside ? -30 : 30, at => f.radical(at, 'Δ', { size: 15 }));
+  f.ref('h', () => f.dimension(O, foot, -58, [{ t: '−', i: false }, I('h')]));
+  f.ref('delta', () => f.dimension(P, foot, inside ? -30 : 30, at => f.radical(at, 'Δ', { size: 15 })));
   return f.root;
 }
 
@@ -455,25 +499,25 @@ export function reflectionFigure(r: ReflectStep): SVGSVGElement {
   f.words(pt(632, P.y - 12), 'tangent plane at P', { anchor: 'end', size: 12, color: '#555' });
 
   const top = pt(P.x, P.y - 158);
-  f.arrow(P, top, 'ink', 1.6);
-  f.math(pt(top.x + 10, top.y + 4), B('N'));
+  f.ref('N', () => { f.arrow(P, top, 'ink', 1.6); f.math(pt(top.x + 10, top.y + 4), B('N')); });
 
   const L = 170;
   const ti = rad(r.thetaI), tr = rad(r.thetaR);
   const start = plus(P, times(pt(-Math.sin(ti), -Math.cos(ti)), L));
   const out = plus(P, times(pt(Math.sin(tr), -Math.cos(tr)), L));
-  f.line(start, between(start, P, 0.5), { color: COLORS.ray, width: 1.9, arrow: 'ray' });
-  f.line(between(start, P, 0.48), P, { color: COLORS.ray, width: 1.9 });
-  f.line(P, out, { color: COLORS.science, width: 1.9, arrow: 'science' });
-  f.math(plus(between(start, P, 0.42), pt(-16, -4)), B('D'), { anchor: 'end', color: COLORS.ray, size: 18 });
-  f.math(plus(between(P, out, 0.62), pt(14, -4)), B('R'), { color: COLORS.science, size: 18 });
-
-  f.arc(P, 52, -90 - r.thetaI, -90);
-  f.arc(P, 60, -90, -90 + r.thetaR);
+  f.ref('D', () => {
+    f.line(start, between(start, P, 0.5), { color: COLORS.ray, width: 1.9, arrow: 'ray' });
+    f.line(between(start, P, 0.48), P, { color: COLORS.ray, width: 1.9 });
+    f.math(plus(between(start, P, 0.42), pt(-16, -4)), B('D'), { anchor: 'end', color: COLORS.ray, size: 18 });
+  });
+  f.ref('R', () => {
+    f.line(P, out, { color: COLORS.science, width: 1.9, arrow: 'science' });
+    f.math(plus(between(P, out, 0.62), pt(14, -4)), B('R'), { color: COLORS.science, size: 18 });
+  });
   const li = plus(P, times(pt(Math.cos(rad(-90 - r.thetaI / 2)), Math.sin(rad(-90 - r.thetaI / 2))), 80));
   const lr = plus(P, times(pt(Math.cos(rad(-90 + r.thetaR / 2)), Math.sin(rad(-90 + r.thetaR / 2))), 88));
-  f.math(li, [{ t: 'θ', i: true }, { t: 'i', i: true, sub: true }], { anchor: 'middle', size: 17 });
-  f.math(lr, [{ t: 'θ', i: true }, { t: 'r', i: true, sub: true }], { anchor: 'middle', size: 17 });
+  f.ref('theta-i', () => { f.arc(P, 52, -90 - r.thetaI, -90); f.math(li, [{ t: 'θ', i: true }, { t: 'i', i: true, sub: true }], { anchor: 'middle', size: 17 }); });
+  f.ref('theta-r', () => { f.arc(P, 60, -90, -90 + r.thetaR); f.math(lr, [{ t: 'θ', i: true }, { t: 'r', i: true, sub: true }], { anchor: 'middle', size: 17 }); });
   f.dot(P, COLORS.ray, 3.8);
   f.math(plus(P, pt(10, 18)), B('P'), { color: COLORS.ray });
   return f.root;
@@ -497,22 +541,21 @@ export function shadingFigure(s: ShadeStep): SVGSVGElement {
 
   const P = pt(330, y0);
   const top = pt(P.x, y0 - (facesAway ? 112 : 140));
-  f.arrow(P, top, 'ink', 1.6);
-  f.math(pt(top.x - 10, top.y + 4), B('N'), { anchor: 'end' });
+  f.ref('N', () => { f.arrow(P, top, 'ink', 1.6); f.math(pt(top.x - 10, top.y + 4), B('N'), { anchor: 'end' }); });
 
   const phi = rad(s.phiDeg);
   const dir = pt(Math.sin(phi), -Math.cos(phi));
   if (facesAway) {
     // The light is behind the tangent plane: phi > 90 degrees, drawn at its true angle.
     const light = plus(P, times(dir, 250));
-    f.line(P, plus(light, times(dir, -24)), { color: COLORS.science, width: 1.8, dash: '5 4', arrow: 'science' });
+    f.ref('L', () => f.line(P, plus(light, times(dir, -24)), { color: COLORS.science, width: 1.8, dash: '5 4', arrow: 'science' }));
     f.cross(plus(P, times(dir, 16)), 5);
     f.bulb(light);
     f.words(plus(light, pt(-4, -34)), 'light, behind the surface', { anchor: 'middle', size: 12.5, color: '#333' });
-    f.math(plus(between(P, light, 0.62), pt(0, -16)), B('L'), { anchor: 'middle', color: COLORS.science, size: 18 });
-    f.arc(P, 48, -90, -90 + s.phiDeg);
+    f.ref('L', () => f.math(plus(between(P, light, 0.62), pt(0, -16)), B('L'), { anchor: 'middle', color: COLORS.science, size: 18 }));
+    f.ref('phi', () => f.arc(P, 48, -90, -90 + s.phiDeg));
     const lp = plus(P, times(pt(Math.cos(rad(-90 + s.phiDeg * 0.42)), Math.sin(rad(-90 + s.phiDeg * 0.42))), 70));
-    f.math(lp, [{ t: 'φ', i: true }, ` = ${s.phiDeg.toFixed(1)}° > 90°`], { size: 15 });
+    f.ref('phi', () => f.math(lp, [{ t: 'φ', i: true }, ` = ${s.phiDeg.toFixed(1)}° > 90°`], { size: 15 }));
   } else {
     const reach = Math.min(232, (y0 - 34) / Math.max(dir.y * -1, 0.2));
     const light = plus(P, times(dir, reach));
@@ -521,22 +564,22 @@ export function shadingFigure(s: ShadeStep): SVGSVGElement {
     if (s.blocked && !s.selfBlocked) {
       const blocker = plus(stop, times(dir, 24));
       f.circle(blocker, 24, f.sphereFill(), COLORS.ink, 1.3);
-      f.line(P, stop, { color: COLORS.science, width: 1.9 });
+      f.ref('L', () => f.line(P, stop, { color: COLORS.science, width: 1.9 }));
       f.line(plus(blocker, times(dir, 24)), plus(light, times(dir, -24)), { color: COLORS.guide, width: 1.1, dash: '4 4' });
       f.cross(stop, 5.5);
       f.words(plus(blocker, pt(30, 2)), `blocked by the ${s.blockerName}`, { size: 12.5, color: '#333' });
     } else {
-      f.line(P, plus(light, times(dir, -24)), { color: COLORS.science, width: 1.9, arrow: 'science' });
+      f.ref('L', () => f.line(P, plus(light, times(dir, -24)), { color: COLORS.science, width: 1.9, arrow: 'science' }));
     }
     f.bulb(light);
     f.words(plus(light, pt(28, -2)), 'light', { size: 13 });
-    f.math(plus(between(P, light, 0.55), plus(times(perp(dir), 16), pt(0, 0))), B('L'), { anchor: 'middle', color: COLORS.science, size: 18 });
+    f.ref('L', () => f.math(plus(between(P, light, 0.55), plus(times(perp(dir), 16), pt(0, 0))), B('L'), { anchor: 'middle', color: COLORS.science, size: 18 }));
     // Measure d on the open side of the ray, away from the normal.
     // Start a little up the ray so the offset line never dips below the surface.
-    f.dimension(plus(P, times(dir, 34)), plus(light, times(dir, -18)), 40, [I('d')]);
-    f.arc(P, 46, -90, -90 + s.phiDeg);
+    f.ref('d', () => f.dimension(plus(P, times(dir, 34)), plus(light, times(dir, -18)), 40, [I('d')]));
+    f.ref('phi', () => f.arc(P, 46, -90, -90 + s.phiDeg));
     const lp = plus(P, times(pt(Math.cos(rad(-90 + s.phiDeg / 2)), Math.sin(rad(-90 + s.phiDeg / 2))), 64));
-    f.math(lp, [{ t: 'φ', i: true }], { anchor: 'middle', size: 17 });
+    f.ref('phi', () => f.math(lp, [{ t: 'φ', i: true }], { anchor: 'middle', size: 17 }));
   }
   f.dot(P, COLORS.ray, 3.8);
   f.math(plus(P, pt(-12, 20)), B('P'), { anchor: 'end', color: COLORS.ray });

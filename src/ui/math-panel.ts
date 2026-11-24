@@ -41,6 +41,13 @@ const slash = (): Element => mo('/', { lspace: '0', rspace: '0' });
 const fence = (ch: string): Element => mo(ch, { stretchy: 'false', lspace: '0', rspace: '0' });
 const yhat = (): Element => row(fence('('), mn('0'), comma(), mn('1'), comma(), mn('0'), fence(')'));
 
+/** Mark an equation term so it links to the figure element with the same data-ref. */
+function ref<T extends Element>(name: string, el: T): T {
+  el.setAttribute('data-ref', name);
+  el.classList.add('ref');
+  return el;
+}
+
 const V = (letter: string, script?: string): Element => inline(script ? vs(letter, script) : v(letter));
 const S = (name: string, script?: string): Element => inline(script ? s(name, script) : mi(name));
 const X = (...children: MNode[]): Element => inline(...children);
@@ -189,7 +196,7 @@ const deg = (cosine: number): number => Math.acos(Math.min(1, Math.max(-1, cosin
 function pixelSection(ch: Chapter, story: MathStory): void {
   const p = story.pixel;
   const b = p.basis;
-  const sum = (): Element => row(v('f'), plus(), s('s', 'x'), mi('k'), v('r'), plus(), s('s', 'y'), mi('k'), v('u'));
+  const sum = (): Element => row(v('f'), plus(), ref('s', s('s', 'x')), ref('k', mi('k')), v('r'), plus(), ref('s', s('s', 'y')), ref('k', mi('k')), v('u'));
   const ndcX = (): Element => row(frac(row(mn('2'), paren(row(mi('x'), plus(), half()))), mi('W')), minus(), mn('1'));
   const ndcY = (): Element => row(mn('1'), minus(), frac(row(mn('2'), paren(row(mi('y'), plus(), half()))), mi('H')));
   const across = dot(p.direction, b.right), upward = dot(p.direction, b.up);
@@ -201,7 +208,7 @@ function pixelSection(ch: Chapter, story: MathStory): void {
     blocks: [
       { kind: 'law', equations: [
         ['screen coordinates', row(s('s', 'x'), eq(), row(paren(ndcX()), cdot(), frac(mi('W'), mi('H'))), comma(), space(1.4), s('s', 'y'), eq(), ndcY())],
-        ['ray direction', row(v('D'), eq(), frac(sum(), norm(sum())), comma(), space(1.4), mi('k'), eq(), fn('tan', frac(sub(mi('\u03b8'), mu('fov')), mn('2'))))],
+        ['ray direction', row(ref('D', v('D')), eq(), frac(sum(), norm(sum())), comma(), space(1.4), ref('k', mi('k')), eq(), fn('tan', frac(sub(mi('\u03b8'), mu('fov')), mn('2'))))],
       ] },
       { kind: 'assume', items: [
         ['Pixels are square, so the horizontal coordinate is stretched by the aspect ratio ', X(mi('W'), mo('/'), mi('H')), '.'],
@@ -221,8 +228,8 @@ function pixelSection(ch: Chapter, story: MathStory): void {
       { kind: 'numbers', equations: [
         math('s x', s('s', 'x'), eq(), row(paren(row(frac(row(mn('2'), paren(row(mn(String(p.x)), plus(), half()))), mn(String(p.width))), minus(), mn('1'))), cdot(), frac(mn(String(p.width)), mn(String(p.height)))), eq(), num(p.sx, 4)),
         math('s y', s('s', 'y'), eq(), row(mn('1'), minus(), frac(row(mn('2'), paren(row(mn(String(p.y)), plus(), half()))), mn(String(p.height)))), eq(), num(p.sy, 4)),
-        math('camera basis', v('f'), eq(), tuple(b.forward), comma(), space(1), v('r'), eq(), tuple(b.right), comma(), space(1), v('u'), eq(), tuple(b.up)),
-        math('half field of view', mi('k'), eq(), fn('tan', degrees(p.fovYDeg / 2)), eq(), num(p.k, 4)),
+        math('camera basis', ref('f', v('f')), eq(), tuple(b.forward), comma(), space(1), ref('r', v('r')), eq(), tuple(b.right), comma(), space(1), ref('u', v('u')), eq(), tuple(b.up)),
+        math('half field of view', ref('k', mi('k')), eq(), fn('tan', degrees(p.fovYDeg / 2)), eq(), num(p.k, 4)),
       ] },
       { kind: 'result', text: [V('D'), ' = ', X(tuple(p.direction, 4)), ', leaving ', V('O'), ' = ', X(tuple(b.origin)), '.'],
         interpretation: ['The ray points ', side(across, 'left of', 'right of', 'neither left nor right of'), ' and ', side(upward, 'below', 'above', 'level with'),
@@ -239,7 +246,7 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
     const near = sp.root === 'near';
     const oc = (): Element => paren(row(v('O'), minus(), v('C')));
     blocks.push(
-      { kind: 'law', equations: [['ray meets sphere', row(sq(norm(row(v('O'), plus(), mi('t'), v('D'), minus(), v('C')))), eq(), sq(mi('R')))]] },
+      { kind: 'law', equations: [['ray meets sphere', row(sq(norm(row(v('O'), plus(), mi('t'), ref('D', v('D')), minus(), ref('C', v('C'))))), eq(), sq(ref('radius', mi('R'))))]] },
       { kind: 'assume', items: [
         [V('D'), ' is a unit vector, ', X(dotted(v('D'), v('D')), eq(), mn('1')), ', so the quadratic’s leading coefficient is 1.'],
         ['Only hits with ', X(mi('t'), mo('>'), eps()), ' count: they lie in front of the ray’s origin.'],
@@ -248,14 +255,14 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
         [sq(norm(row(oc(), plus(), mi('t'), v('D')))), mo('='), sq(mi('R'))],
         [row(sq(mi('t')), paren(dotted(v('D'), v('D'))), plus(), mn('2'), mi('t'), paren(dotted(v('D'), oc())), plus(), sq(norm(oc())), minus(), sq(mi('R'))), mo('='), mn('0')],
         [row(sq(mi('t')), plus(), mn('2'), mi('h'), mi('t'), plus(), mi('c')), mo('='), mn('0')],
-        [mi('h'), mo('='), dotted(oc(), v('D'))],
+        [ref('h', mi('h')), mo('='), dotted(oc(), v('D'))],
         [mi('c'), mo('='), row(sq(norm(oc())), minus(), sq(mi('R')))],
-        [mi('t'), mo('='), row(row(neg(mi('h')), mo('\u00b1'), sqrt(row(sq(mi('h')), minus(), mi('c')))), eq(), row(neg(mi('h')), mo('\u00b1'), sqrt(mi('\u0394'))))],
+        [mi('t'), mo('='), row(row(neg(mi('h')), mo('\u00b1'), sqrt(row(sq(mi('h')), minus(), mi('c')))), eq(), row(neg(ref('h', mi('h'))), mo('\u00b1'), ref('delta', sqrt(mi('\u0394')))))],
       ]), note: ['If ', X(mi('\u0394'), mo('<'), mn('0')), ' the line misses the sphere; if ', X(mi('\u0394'), eq(), mn('0')), ' it grazes it; the nearest root greater than ', S('\u03b5'), ' is the visible hit.'] },
       { kind: 'numbers', equations: [
-        math('quadratic terms', mi('h'), eq(), num(sp.h), comma(), space(1), mi('c'), eq(), num(sp.c), comma(), space(1), mi('\u0394'), eq(), row(sq(mi('h')), minus(), mi('c')), eq(), num(sp.delta, 4)),
-        math('distance', mi('t'), eq(), row(neg(mi('h')), near ? minus() : plus(), sqrt(mi('\u0394'))), eq(), row(num(-sp.h), near ? minus() : plus(), num(Math.sqrt(Math.max(sp.delta, 0)), 4)), eq(), num(hit.t)),
-        math('hit point and normal', v('P'), eq(), row(v('O'), plus(), mi('t'), v('D')), eq(), tuple(hit.point), comma(), space(1), v('N'), eq(), frac(row(v('P'), minus(), v('C')), mi('R')), eq(), tuple(hit.normal)),
+        math('quadratic terms', ref('h', mi('h')), eq(), num(sp.h), comma(), space(1), mi('c'), eq(), num(sp.c), comma(), space(1), mi('\u0394'), eq(), row(sq(mi('h')), minus(), mi('c')), eq(), num(sp.delta, 4)),
+        math('distance', mi('t'), eq(), row(neg(ref('h', mi('h'))), near ? minus() : plus(), ref('delta', sqrt(mi('\u0394')))), eq(), row(num(-sp.h), near ? minus() : plus(), ref('delta', num(Math.sqrt(Math.max(sp.delta, 0)), 4))), eq(), num(hit.t)),
+        math('hit point and normal', ref('P', v('P')), eq(), row(v('O'), plus(), mi('t'), v('D')), eq(), tuple(hit.point), comma(), space(1), ref('N', v('N')), eq(), frac(row(v('P'), minus(), ref('C', v('C'))), ref('radius', mi('R'))), eq(), tuple(hit.normal)),
       ] },
       { kind: 'result', text: ['The ray meets the ', hit.name, ' at ', V('P'), ' = ', X(tuple(hit.point)), ', ', X(mi('t'), eq(), num(hit.t)), ' along the ray.'],
         interpretation: near
@@ -302,7 +309,7 @@ function reflectSection(ch: Chapter, r: ReflectStep): void {
     figure: reflectionFigure(r),
     caption: ['Bounce at ', V('P'), ': incoming ', V('D'), ', normal ', V('N'), ', outgoing ', V('R'), '. Angles are drawn at their computed size.'],
     blocks: [
-      { kind: 'law', equations: [['law of reflection', row(v('R'), eq(), row(v('D'), minus(), mn('2'), paren(dotted(v('D'), v('N'))), v('N')))]] },
+      { kind: 'law', equations: [['law of reflection', row(ref('R', v('R')), eq(), row(ref('D', v('D')), minus(), mn('2'), paren(dotted(ref('D', v('D')), ref('N', v('N')))), ref('N', v('N'))))]] },
       { kind: 'assume', items: [['The mirror is perfect and untinted: all light is reflected, in one direction.'], [V('N'), ' is the unit normal facing the incoming ray, so ', X(dotted(v('D'), v('N')), mo('<'), mn('0')), '.']] },
       { kind: 'derive', steps: aligned([
         [v('D'), mo('='), row(sub(v('D'), mo('\u2225')), plus(), sub(v('D'), mo('\u22a5'))), ],
@@ -313,7 +320,7 @@ function reflectSection(ch: Chapter, r: ReflectStep): void {
       ]), note: ['Because only the normal part changes sign, ', X(norm(v('R')), eq(), norm(v('D')), eq(), mn('1')), ', and the angles to the normal are equal.'] },
       { kind: 'numbers', equations: [
         math('reflection numbers', dotted(v('D'), v('N')), eq(), num(r.dDotN, 4), space(1), implies(), space(1), v('R'), eq(), tuple(r.outgoing, 4)),
-        math('angles', theta('i'), eq(), fn('arccos', neg(dotted(v('D'), v('N')))), eq(), degrees(r.thetaI), comma(), space(1), theta('r'), eq(), fn('arccos', dotted(v('R'), v('N'))), eq(), degrees(r.thetaR)),
+        math('angles', ref('theta-i', theta('i')), eq(), fn('arccos', neg(dotted(v('D'), v('N')))), eq(), degrees(r.thetaI), comma(), space(1), ref('theta-r', theta('r')), eq(), fn('arccos', dotted(v('R'), v('N'))), eq(), degrees(r.thetaR)),
         math('next ray origin', prime(v('O')), eq(), row(v('P'), plus(), eps(), v('N')), comma(), space(1), eps(), eq(), tenTo(-4)),
       ] },
       { kind: 'result', text: [V('R'), ' = ', X(tuple(r.outgoing, 4)), ', with ', X(theta('i'), eq(), theta('r'), eq(), degrees(r.thetaI)), '.'],
@@ -338,8 +345,8 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
       : ['Shadow ray from ', V('P'), ' toward the light. ', X(dotted(v('N'), v('L')), eq(), fn('cos', mi('\u03c6'))), ' measures how directly the surface faces it. Distance not to scale.'],
     blocks: [
       { kind: 'law', equations: [['shading', row(v('c'), eq(), row(mi('a'), v('\u03c1'), plus(), mi('V'), space(0.2),
-        frac(row(paren(row(v('\u03c1'), hadamard(), vs('c', 'L'))), mi('I'), space(0.2), fn('max', row(dotted(v('N'), v('L')), comma(), mn('0')))),
-          fn('max', row(sq(mi('d')), comma(), mn('0.01'))))))]] },
+        frac(row(paren(row(v('\u03c1'), hadamard(), vs('c', 'L'))), mi('I'), space(0.2), fn('max', row(ref('phi', dotted(ref('N', v('N')), ref('L', v('L')))), comma(), mn('0')))),
+          fn('max', row(sq(ref('d', mi('d'))), comma(), mn('0.01'))))))]] },
       { kind: 'assume', items: [
         ['One point light: shadows are hard, so ', X(mi('V'), mo('\u2208'), row(fence('{'), mn('0'), comma(), mn('1'), fence('}'))), '.'],
         ['The surface is Lambertian (ideally matte): it reflects ', X(v('\u03c1'), slash(), mi('\u03c0')), ' of the arriving light in every direction.'],
@@ -353,8 +360,8 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
         [v('c'), mo('='), row(mi('a'), v('\u03c1'), plus(), sub(v('c'), mu('direct')))],
       ]), note: ['The irradiance ', S('E'), ' follows the cosine law and the inverse-square law; ', X(mn('1'), slash(), mi('\u03c0')), ' is the Lambertian normalization.'] },
       { kind: 'numbers', equations: [
-        math('shadow ray', mi('d'), eq(), norm(toLight()), eq(), num(sh.distance), comma(), space(1), v('L'), eq(), tuple(sh.toLight), comma(), space(1),
-          dotted(v('N'), v('L')), eq(), num(sh.rawNDotL, 4), comma(), space(1), mi('V'), eq(), mn(String(sh.visibility))),
+        math('shadow ray', ref('d', mi('d')), eq(), norm(toLight()), eq(), num(sh.distance), comma(), space(1), ref('L', v('L')), eq(), tuple(sh.toLight), comma(), space(1),
+          ref('phi', dotted(v('N'), v('L'))), eq(), num(sh.rawNDotL, 4), comma(), space(1), mi('V'), eq(), mn(String(sh.visibility))),
         math('shading numbers', v('c'), eq(), row(num(sh.ambient, 2), tuple(sh.albedo), plus(), mn(String(sh.visibility)), cdot(),
           frac(row(paren(row(tuple(sh.albedo), hadamard(), tuple(sh.lightColor, 2))), cdot(), mn(String(sh.intensity)), cdot(), num(sh.nDotL, 4)),
             num(Math.max(sh.distanceSquared, 0.01), 3)))),
@@ -439,6 +446,73 @@ function displaySection(ch: Chapter, story: MathStory): void {
 
 // --- entry point -------------------------------------------------------------------
 
+/** Direct manipulation callbacks supplied by the interface (index.ts). */
+export type MathInteraction = { inspectAt(u: number, v: number): void };
+
+const latestView = new WeakMap<HTMLElement, ViewState | null>();
+
+/**
+ * Bidirectional highlighting: pointing at an equation term or a figure element
+ * marks every element with the same data-ref in that section (P5).
+ */
+function enableLinking(container: HTMLElement): void {
+  if (container.dataset.linking) return;
+  container.dataset.linking = 'true';
+  const toggle = (target: EventTarget | null, on: boolean) => {
+    const el = target instanceof Element ? target.closest('[data-ref]') : null;
+    const section = el?.closest('.math-step');
+    if (!el || !section) return;
+    const name = el.getAttribute('data-ref');
+    section.querySelectorAll(`[data-ref="${name}"]`).forEach(n => n.classList.toggle('is-linked', on));
+  };
+  container.addEventListener('pointerover', e => toggle(e.target, true));
+  container.addEventListener('pointerout', e => toggle(e.target, false));
+}
+
+/**
+ * Figure 3.1's image-space grid as a handle: drag, or use the arrow keys (one
+ * grid cell per press), to select a pixel. Listeners and pointer capture live on
+ * the persistent container because the figure is rebuilt on every change.
+ */
+function enablePixelDrag(container: HTMLElement, interact: MathInteraction): void {
+  if (container.dataset.pixelDrag) return;
+  container.dataset.pixelDrag = 'true';
+  let pointer: number | null = null;
+  const grid = () => container.querySelector<SVGElement>('[data-drag="pixel-grid"]');
+  const pick = (e: PointerEvent) => {
+    const g = grid();
+    if (!g) return;
+    const r = g.getBoundingClientRect();
+    const clamp = (x: number) => Math.min(1 - 1e-9, Math.max(0, x));
+    interact.inspectAt(clamp((e.clientX - r.left) / r.width), clamp((e.clientY - r.top) / r.height));
+  };
+  container.addEventListener('pointerdown', e => {
+    if (!(e.target instanceof Element) || !e.target.closest('[data-drag="pixel-grid"]')) return;
+    pointer = e.pointerId;
+    container.setPointerCapture(e.pointerId);
+    grid()?.focus({ preventScroll: true });
+    e.preventDefault();
+    pick(e);
+  });
+  container.addEventListener('pointermove', e => { if (pointer === e.pointerId) pick(e); });
+  const end = (e: PointerEvent) => { if (pointer === e.pointerId) { pointer = null; container.releasePointerCapture?.(e.pointerId); } };
+  container.addEventListener('pointerup', end);
+  container.addEventListener('pointercancel', end);
+  container.addEventListener('keydown', e => {
+    if (!(e.target instanceof Element) || e.target.getAttribute('data-drag') !== 'pixel-grid') return;
+    const pixel = latestView.get(container)?.inspection?.pixel;
+    if (!pixel) return;
+    const cell = { x: Math.max(1, Math.round(pixel.width / 16)), y: Math.max(1, Math.round(pixel.height / 9)) };
+    const step: Record<string, [number, number]> = { ArrowLeft: [-cell.x, 0], ArrowRight: [cell.x, 0], ArrowUp: [0, -cell.y], ArrowDown: [0, cell.y] };
+    const d = step[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const x = Math.min(pixel.width - 1, Math.max(0, pixel.x + d[0]));
+    const y = Math.min(pixel.height - 1, Math.max(0, pixel.y + d[1]));
+    interact.inspectAt((x + 0.5) / pixel.width, (y + 0.5) / pixel.height);
+  });
+}
+
 /** Latest view waiting to be drawn while a surrounding <details> is closed. */
 const pending = new WeakMap<HTMLElement, ViewState | null>();
 const scheduled = new WeakMap<HTMLElement, number>();
@@ -448,7 +522,10 @@ const scheduled = new WeakMap<HTMLElement, number>();
  * are skipped, rapid changes (arrow keys) are coalesced into one render per
  * frame, and inside a closed <details> nothing is built until it opens.
  */
-export function renderMathPanel(container: HTMLElement, view: ViewState | null): void {
+export function renderMathPanel(container: HTMLElement, view: ViewState | null, interact?: MathInteraction): void {
+  latestView.set(container, view);
+  enableLinking(container);
+  if (interact) enablePixelDrag(container, interact);
   const details = container.closest('details');
   if (details && !details.open) {
     pending.set(container, view);
@@ -510,6 +587,9 @@ function draw(container: HTMLElement, view: ViewState | null): void {
   endSection(ch, story);
   displaySection(ch, story);
   paper.append(...ch.nodes);
+  const keepFocus = document.activeElement instanceof Element && container.contains(document.activeElement)
+    ? document.activeElement.getAttribute('data-drag') : null;
   container.replaceChildren(paper);
+  if (keepFocus) container.querySelector<SVGElement>(`[data-drag="${keepFocus}"]`)?.focus({ preventScroll: true });
 }
 
