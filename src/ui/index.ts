@@ -3,6 +3,7 @@ import type { UIActions, UIHandle } from '../contracts.ts';
 import { CONTROL_RANGES } from '../scene/preset.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
+import { renderMathPanel } from './math-panel.ts';
 import { normalizedPoint, snapToStep, stepSelection } from './selection.ts';
 import '../styles/main.css';
 
@@ -260,11 +261,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
         return li;
       }));
       events.hidden = explanation.items.length === 0;
-      mathBody.replaceChildren(...explanation.math.map(line => {
-        const paragraph = document.createElement('p');
-        paragraph.textContent = line;
-        return paragraph;
-      }));
+      renderMathPanel(mathBody, view);
       diagram.show(explanation.diagram, explanation.summary);
     },
     dispose() {
