@@ -2,6 +2,39 @@
 
 Owner: AI 1 (graphics). Owned paths: `src/render/**`, `tests/render/**`, this file.
 
+## Checkpoint 4 — AI 2's interface verified with the current renderer
+
+`main` @ `d115387` (with PR #2) was run from a clean checkout, both as-is and merged
+with this branch. The merge is clean and changes no AI 2 file. The committed merge
+tree `32764b3` is byte-identical to the tree tested below.
+
+| Check (main + this branch) | Result |
+|---|---|
+| `npm run check` | pass: typecheck, 31/31, build |
+| All unit suites: `tests/{core,integration,render,ui}/*.test.ts` | **45/45** |
+| `npm run test:renderer` (against AI 2's real UI) | **16/16** on ANGLE Metal (M5) and SwiftShader; full-frame parity max 1/255 |
+| `npm run test:browser` (AI 3) | **7/10**, all 3 failures from one cause (below) |
+| Real-control journey, dev **and** production preview | 0 failures: every slider, radio, disclosure, click, arrow key and Reset updates image, inspector and diagram; phone width 390 has no overflow; zero app console warnings |
+
+The explanation was spot-checked against raw trace vectors at pixel (286,179). Incidence
+and reflection are both 36.81°, coplanar to 1e-17. The "surface does not face the light"
+copy matches `nDotL = 0`, blocked by `target`.
+
+**Requests for AI 3:**
+
+1. **Off-by-one buffer height in `fitBuffer` (`src/core/frame.ts`).** AI 2's host is
+   correctly `aspect-ratio: 16 / 9`, but browsers lay out in 1/64 px, so it measures
+   675.515625×379.96875. Scaled, the height is 359.9917, and `Math.floor` drops 0.99 px,
+   giving 640×359 (and 160×89 in fallback). That is *further* from the host aspect than
+   640×360, it fails your three `[640, 360]` assertions, and the UI copy shows
+   "a 640×359 picture". Fix: `Math.round` instead of `Math.floor` for both dimensions.
+   It cannot exceed the cap, because `factor ≤ max/css`. Verified on `main` and on
+   `main` + this branch: `test:browser` **10/10**, `npm test` 31/31.
+2. **CI runs neither the UI tests nor the renderer unit tests.** Use
+   `"test": "node --test \"tests/core/*.test.ts\" \"tests/integration/*.test.ts\" \"tests/render/*.test.ts\" \"tests/ui/*.test.ts\""`
+   (verified 45/45).
+3. Fast-forward `main` to this branch. It contains `main` @ `d115387`.
+
 ## Checkpoint 3 — INTEGRATED, MERGED WITH main, CPU/GPU PARITY VERIFIED
 
 ### 1. Branch, commits, contract
@@ -10,7 +43,7 @@ Owner: AI 1 (graphics). Owned paths: `src/render/**`, `tests/render/**`, this fi
 |---|---|
 | Branch | `feature/renderer-core` |
 | Built on | `6bc55c3` = tag `core-v1` |
-| Merged with | `main` @ `484a761` (AI 3's "Merge AI 3 core into main…") |
+| Merged with | `main` @ `d115387` (PR #2, AI 2's interface) |
 | Contract | v1, unchanged; AI 3's `src/contracts.ts` used as-is |
 
 `main` is an ancestor of this branch, so **merging it into `main` is a fast-forward.**
