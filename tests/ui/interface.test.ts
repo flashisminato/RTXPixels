@@ -29,8 +29,8 @@ test('selection uses the host content rectangle and arrow keys move one pixel', 
 });
 
 test('3D view keeps sideways, up, and depth distinguishable, like a textbook frame', () => {
-  assert.match(SCHEMATIC_NOTE, /not a second camera/);
-  assert.match(SCHEMATIC_NOTE, /depth/);
+  assert.match(SCHEMATIC_NOTE, /3D view/);
+  assert.match(CANVAS_LABEL, /not a second camera/);
   assert.match(CANVAS_LABEL, /\+Z depth/);
   const origin = project([0, 0, 0]);
   const side = project([1, 0, 0]);
@@ -221,3 +221,22 @@ function hit(objectId: string, from: Vec3, point: Vec3): TraceEvent {
     hit: { objectId, materialIndex: 1, t: 1, point, outwardNormal: [0, 1, 0], normal: [0, 1, 0], frontFace: true },
   };
 }
+
+test('the direct answer names the pixel and stays under 50 words across the picture', async () => {
+  const { createStore } = await import('../../src/state/index.ts');
+  const { makeFrame, inspectPixel } = await import('../../src/core/frame.ts');
+  const store = createStore();
+  store.dispatch({ type: 'light-add' });
+  for (const mode of ['beauty', 'hit'] as const) {
+    if (mode === 'hit') store.dispatch({ type: 'view-mode', value: 'hit' });
+    const view = store.getSnapshot();
+    const frame = makeFrame(view, 160, 90);
+    for (let y = 2; y < 90; y += 9) for (let x = 2; x < 160; x += 9) {
+      const inspection = inspectPixel(frame, x, y);
+      const { answer } = buildExplanation({ ...view, inspection });
+      assert.ok(answer.startsWith(`Pixel (${x}, ${y}): `), answer);
+      assert.ok(answer.split(/\s+/).length < 50, `${answer.split(/\s+/).length} words: ${answer}`);
+      assert.doesNotMatch(answer, /picture version/i);
+    }
+  }
+});

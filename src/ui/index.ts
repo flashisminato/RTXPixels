@@ -4,7 +4,6 @@ import { CONTROL_RANGES, EXTRA_LIGHT_TINTS } from '../scene/preset.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
 import { renderMathPanel } from './math-panel.ts';
-import { buildSourceChapter } from './source-view.ts';
 import { normalizedPoint, snapToStep, stepSelection } from './selection.ts';
 import '../styles/main.css';
 
@@ -29,20 +28,17 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
 
   const header = document.createElement('header');
   const title = document.createElement('h1');
-  title.textContent = 'Follow a Pixel';
+  title.textContent = 'RTXPixel';
   const question = document.createElement('p');
   question.className = 'question';
-  question.textContent = 'How does a game decide what a mirror shows?';
+  question.textContent = 'Real-time ray-tracing interactive environment in WebGL';
   const abstract = document.createElement('p');
   abstract.className = 'abstract';
-  abstract.textContent = 'This document ray traces a small room and lets you follow the ray behind any pixel: where it lands, how it bounces off the mirror, whether the light reaches it, and how that becomes a color. Every figure, equation and number is recomputed live from the same scene you control.';
+  abstract.textContent = 'Ever wondered why RTX makes the lighting in games look so real? Use RTXPixel to find out! Click any pixel you like to see how light and the camera work together. With an adjustable surface finish and light positions, you can watch how the math—and the color—changes in real time!';
   header.className = 'front';
   header.append(title, question, abstract);
 
   const picture = chapter('ch-1', '1', 'The picture');
-  const lead = document.createElement('p');
-  lead.className = 'lead';
-  lead.textContent = 'Move the colored object and watch its reflection. Then follow one pixel to see the bounce that chose its color.';
   const frame = document.createElement('div');
   frame.className = 'stage-frame';
   const canvasHost = document.createElement('div');
@@ -56,11 +52,6 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   marker.hidden = true;
   marker.setAttribute('aria-hidden', 'true');
   frame.append(canvasHost, marker);
-  const pictureHelp = document.createElement('p');
-  pictureHelp.className = 'picture-help';
-  pictureHelp.id = `${ns}-picture-help`;
-  pictureHelp.textContent = 'Click or tap a pixel. With the picture focused, the arrow keys move one pixel at a time.';
-  canvasHost.setAttribute('aria-describedby', pictureHelp.id);
   const actionsRow = document.createElement('div');
   actionsRow.className = 'picture-actions';
   const example = document.createElement('button');
@@ -72,26 +63,18 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   reset.className = 'button button-secondary';
   reset.textContent = 'Reset';
   actionsRow.append(example, reset);
-  const actionHelp = document.createElement('p');
-  actionHelp.className = 'action-help';
-  actionHelp.textContent = 'Inspect asks the current picture for a real mirror pixel. Reset restores the original object, light, camera, mirror, bounce limit, and full picture.';
+  // The live status stays for screen readers and the test hooks, but is not shown.
   const status = document.createElement('p');
-  status.className = 'status';
+  status.className = 'status visually-hidden';
   status.setAttribute('role', 'status');
-  const statusHelp = document.createElement('p');
-  statusHelp.className = 'status-help';
-  statusHelp.textContent = 'This line is the picture’s actual status. Starting means it is still computing. Ready and fallback are real pictures. An error means the picture is unavailable, and the schematic will not invent one.';
 
   const controls = document.createElement('section');
   controls.className = 'controls';
   controls.setAttribute('aria-label', 'Parameters');
   const controlsTitle = document.createElement('h3');
   controlsTitle.textContent = 'Parameters';
-  const controlsHint = document.createElement('p');
-  controlsHint.className = 'controls-hint';
-  controlsHint.textContent = 'Try this first: move the colored object and watch its reflection.';
   const target = rangeControl(signal, `${ns}-target`, 'Move the colored object',
-    'Slide it sideways and watch the reflection. The colored object does not rotate.', CONTROL_RANGES.targetX, value => {
+    '', CONTROL_RANGES.targetX, value => {
       commitNumber(value, CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
     });
   const mirror = radioControl(signal, `${ns}-mirror`, 'Center sphere',
@@ -270,7 +253,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   selectTab(0);
   const controlsHead = document.createElement('div');
   controlsHead.className = 'controls-head';
-  controlsHead.append(controlsTitle, controlsHint);
+  controlsHead.append(controlsTitle);
   controls.append(controlsHead, tabList, ...panels);
 
   const explain = document.createElement('section');
@@ -278,12 +261,9 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const explainTitle = document.createElement('h3');
   explainTitle.className = 'explain-title';
   explainTitle.textContent = 'Pick a pixel to follow';
-  const modeNote = document.createElement('p');
-  modeNote.className = 'mode-note';
-  const pixelLine = document.createElement('p');
-  pixelLine.className = 'pixel-line';
-  const summary = document.createElement('p');
-  summary.className = 'summary';
+  // The direct answer: the pixel's coordinates and why it has its color, in one paragraph.
+  const answer = document.createElement('p');
+  answer.className = 'summary';
   // Backward tracing is the chapter's governing definition, so it is set as one.
   const direction = definition('2.1', 'Backward tracing.',
     'The ray is followed from the camera into the scene, the opposite way to physical light, which travels from the light toward the camera. The lines in Figure 2.1 walk in that computational direction.');
@@ -297,25 +277,30 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   figure.append(caption, diagramHost);
   const events = document.createElement('ol');
   events.className = 'events';
+  events.id = `${ns}-steps`;
   events.setAttribute('aria-label', 'Computed steps for the selected pixel');
   events.hidden = true;
-  // Chapter 3 is part of the document, not hidden behind a toggle; only the
-  // long derivations inside it use progressive disclosure.
+  // The step-by-step trace stays hidden until the reader asks for it.
+  let stepsOpen = false;
+  const stepsButton = document.createElement('button');
+  stepsButton.type = 'button';
+  stepsButton.className = 'button button-secondary explain-more';
+  stepsButton.setAttribute('aria-controls', events.id);
+  stepsButton.hidden = true;
+  const syncSteps = (): void => {
+    const any = events.childElementCount > 0;
+    stepsButton.hidden = !any;
+    events.hidden = !any || !stepsOpen;
+    stepsButton.textContent = stepsOpen ? 'Show less' : 'Explain more';
+    stepsButton.setAttribute('aria-expanded', String(stepsOpen));
+  };
+  stepsButton.addEventListener('click', () => { stepsOpen = !stepsOpen; syncSteps(); }, { signal });
   const math = document.createElement('div');
   math.className = 'math';
   const mathBody = document.createElement('div');
   math.append(mathBody);
-  explain.append(explainTitle, modeNote, pixelLine, summary, direction, figure, events);
+  explain.append(explainTitle, answer, direction, figure, stepsButton, events);
 
-  const footer = document.createElement('footer');
-  footer.className = 'credits';
-  const limits = document.createElement('p');
-  limits.className = 'limits';
-  limits.textContent = 'Version 1 computes spheres, planes, up to four point lights, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention.';
-  const credits = document.createElement('a');
-  credits.href = './notices/credits.html';
-  credits.textContent = 'Credits and limitations';
-  footer.append(limits, credits);
 
   // Integration reads this single pre as JSON of the current inspection.
   const record = document.createElement('pre');
@@ -327,7 +312,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const pictureFigure = document.createElement('figure');
   pictureFigure.className = 'fig fig-picture';
   const pictureCaption = document.createElement('figcaption');
-  pictureCaption.append(figureLabel('Figure 1.1'), 'The scene, ray traced live on the GPU (WebGL2) at up to 640 × 360 pixels. ', pictureHelp);
+  pictureCaption.append(figureLabel('Figure 1.1'));
   pictureFigure.append(frame, pictureCaption);
   const pixelSelect = document.createElement('fieldset');
   pixelSelect.className = 'pixel-select';
@@ -339,7 +324,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const inspectRow = document.createElement('div');
   inspectRow.className = 'inspect-row';
   inspectRow.append(pixelSelect, actionsRow);
-  picture.append(lead, pictureFigure, inspectRow, status, controls, actionHelp, statusHelp);
+  picture.append(pictureFigure, inspectRow, status, controls);
 
   // ---- Chapter 2: following one pixel.
   const follow = chapter('ch-2', '2', 'Follow one pixel');
@@ -352,20 +337,10 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   mathLead.textContent = 'The same calculation, written out as equations, for the pixel you selected. Every figure and number is recomputed from the scene above.';
   mathematics.append(mathLead, math);
 
-  // ---- Chapter 4: the implementation, as it runs.
-  const implementation = chapter('ch-4', '4', 'Implementation');
-  const implLead = document.createElement('p');
-  implLead.className = 'chapter-lead';
-  implLead.textContent = 'The same mathematics is implemented twice: a CPU reference tracer in TypeScript, which produces every number in chapters 2 and 3, and the GPU shader in GLSL, which draws Figure 1.1. Both are shown exactly as they run, extracted from the source, not copied. The project’s browser tests check that the two agree pixel by pixel.';
-  implementation.append(implLead, ...buildSourceChapter());
-
-  // ---- Chapter 5: limits and credits.
-  const colophon = chapter('ch-5', '5', 'Limits and credits');
-  colophon.append(footer);
-
   const doc = document.createElement('main');
   doc.className = 'doc';
-  const chapters = [picture, follow, mathematics, implementation, colophon];
+  // The implementation and the limits and credits live in the README.
+  const chapters = [picture, follow, mathematics];
   doc.append(...chapters);
   const toc = tableOfContents(chapters);
   shell.append(header, toc.nav, doc, record);
@@ -458,9 +433,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       const explanation = buildExplanation(view);
       explain.dataset.stale = explanation.stale ? 'true' : 'false';
       explainTitle.textContent = explanation.heading;
-      modeNote.textContent = explanation.modeNote;
-      pixelLine.textContent = explanation.pixelLine;
-      summary.textContent = explanation.summary;
+      answer.textContent = explanation.answer;
       events.replaceChildren(...explanation.items.map(item => {
         const li = document.createElement('li');
         li.dataset.kind = item.kind;
@@ -475,7 +448,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
         li.append(itemTitle, detail);
         return li;
       }));
-      events.hidden = explanation.items.length === 0;
+      syncSteps();
       renderMathPanel(mathBody, view, {
         inspectAt(u, v) { selection = { u, v }; placeMarker(); actions.inspectAt(u, v); },
       });
@@ -675,10 +648,13 @@ function rangeControl(
   input.max = String(range.max);
   input.step = String(range.step);
   input.addEventListener('input', () => commit(Number(input.value)), { signal });
-  const note = document.createElement('p');
-  note.className = 'control-help';
-  note.textContent = help;
-  wrap.append(head, input, note);
+  wrap.append(head, input);
+  if (help) {
+    const note = document.createElement('p');
+    note.className = 'control-help';
+    note.textContent = help;
+    wrap.append(note);
+  }
   return { wrap, input, output };
 }
 

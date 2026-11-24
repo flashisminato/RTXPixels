@@ -19,7 +19,7 @@ export const VIEW_TOWARD_VIEWER: Vec3 = [Math.sin(yaw) * Math.cos(pitch), Math.s
 const SCREEN_RIGHT: Vec3 = [Math.cos(yaw), 0, Math.sin(yaw)];
 const SCREEN_UP: Vec3 = [-Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), Math.cos(yaw) * Math.sin(pitch)];
 
-export const SCHEMATIC_NOTE = 'Schematic: a 3D view of the computed points on a coordinate frame. X runs sideways, Y is up, and Z is depth, receding into the page. Dashed drops meet the floor (y = 0) below each point. This is not a second camera and not another ray-traced picture. Angles on the drawing can look different from the 3D angles in the steps.';
+export const SCHEMATIC_NOTE = 'Schematic: a 3D view of the computed points on a coordinate frame.';
 export const CANVAS_LABEL = '3D schematic on a coordinate frame, not a second camera. +X sideways, +Y up, +Z depth.';
 
 export type PlanSegment = {
@@ -47,6 +47,8 @@ export type DiagramPlan = {
 
 export type Explanation = {
   heading: string;
+  /** The direct answer shown under the heading: one plain paragraph, under 50 words. */
+  answer: string;
   modeNote: string;
   summary: string;
   pixelLine: string;
@@ -125,6 +127,7 @@ export function buildExplanation(view: ViewState): Explanation {
   if (!inspection) {
     return {
       heading: view.status === 'error' ? 'No picture to explain' : 'Pick a pixel to follow',
+      answer: emptySummary(view),
       modeNote,
       summary: emptySummary(view),
       pixelLine: `Picture version ${view.sceneVersion}. No pixel selected.`,
@@ -137,6 +140,7 @@ export function buildExplanation(view: ViewState): Explanation {
   if (inspection.sceneVersion !== view.sceneVersion) {
     return {
       heading: 'This path is out of date',
+      answer: 'The scene changed, so the old path is hidden. Pick the pixel again once the picture updates.',
       modeNote,
       summary: 'An older path is hidden so it is not mistaken for the current picture. Pick the pixel again after the picture updates.',
       pixelLine: `Picture version ${view.sceneVersion}. The selected trace is from version ${inspection.sceneVersion} and is hidden.`,
@@ -150,6 +154,7 @@ export function buildExplanation(view: ViewState): Explanation {
   if (events.length === 0) {
     return {
       heading: view.controls.viewMode === 'beauty' ? 'Why this pixel is that color' : 'First-hit check for this pixel',
+      answer: `Pixel (${inspection.pixel.x}, ${inspection.pixel.y}) returned no trace events.`,
       modeNote,
       summary: 'This pixel returned no trace events.',
       pixelLine: pixelLine(view, inspection),
@@ -162,6 +167,7 @@ export function buildExplanation(view: ViewState): Explanation {
   const built = planEvents(events, view.scene);
   return {
     heading: view.controls.viewMode === 'beauty' ? 'Why this pixel is that color' : 'First-hit check for this pixel',
+    answer: answerFor(inspection.pixel, events, view.controls.maxRedirects),
     modeNote,
     summary: summarize(events, view.controls.maxRedirects),
     pixelLine: pixelLine(view, inspection),
@@ -189,6 +195,24 @@ function emptySummary(view: ViewState): string {
 function pixelLine(view: ViewState, inspection: NonNullable<ViewState['inspection']>): string {
   const pixel = inspection.pixel;
   return `Picture version ${view.sceneVersion}. Column ${pixel.x}, row ${pixel.y} from the top left, in a ${pixel.width}×${pixel.height} picture.`;
+}
+
+/**
+ * The direct answer to "why is this pixel that color?": the pixel's coordinates,
+ * the path in one sentence, and whether light reaches the surface that ends it.
+ */
+function answerFor(pixel: { x: number; y: number }, events: TraceEvent[], redirects: number): string {
+  const path = summarize(events, redirects);
+  const end = events.findLast((event): event is Extract<TraceEvent, { kind: 'end' }> => event.kind === 'end');
+  let light = '';
+  if (end?.reason === 'surface') {
+    const checks = events.filter((event): event is Extract<TraceEvent, { kind: 'shadow' }> => event.kind === 'shadow');
+    const lit = checks.filter(event => !event.blocked && event.nDotL > 1e-6).length;
+    if (checks.length > 0 && lit === 0) light = ' No light reaches that spot directly, so only the faint ambient light colors it.';
+    else if (checks.length > 1 && lit < checks.length) light = ` ${lit} of the ${checks.length} lights reach that spot, so it is partly lit.`;
+    else if (lit > 0) light = ' Light reaches that spot, so it shows the surface’s own color, lit.';
+  }
+  return `Pixel (${pixel.x}, ${pixel.y}): ${path}${light}`;
 }
 
 function summarize(events: TraceEvent[], redirects: number): string {
