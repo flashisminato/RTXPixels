@@ -1,5 +1,5 @@
 import type { ViewState } from '../contracts.ts';
-import { buildMathStory, dot, type HitStep, type MathStory, type ReflectStep, type ShadeStep } from './math-model.ts';
+import { buildMathStory, dot, type HitStep, type LocalStep, type MathStory, type ReflectStep, type ShadeStep } from './math-model.ts';
 import { displayFigure, intersectionFigure, pixelToRayFigure, reflectionFigure, shadingFigure } from './math-figures.ts';
 import {
   approx, cases, cdot, comma, degrees, eq, frac, hadamard, implies, inline, math, mi, minus, mn, mo, mtext, mu, norm, num, paren,
@@ -356,6 +356,25 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
   });
 }
 
+function localSection(ch: Chapter, lo: LocalStep): void {
+  const many = lo.terms.length > 1;
+  ch.add({
+    title: `Lighting without ray tracing: the ${lo.surface.name}`,
+    purpose: ['With ray tracing off, the color is decided at the first surface the camera ray meets, as a rasterizer would decide it. Each light adds its direct term with nothing checking for shadows (', X(mi('V'), eq(), mn('1')),
+      ' for every light), and a mirror is shaded like a matte surface in its own tint, so no reflection appears. The surface reflects ', X(v('\u03c1'), slash(), mi('\u03c0')), ' of the arriving light; ', X(mi('a'), v('\u03c1')), ' is the constant ambient light.'],
+    blocks: [
+      { kind: 'law', equations: [['direct lighting', row(v('c'), eq(), row(mi('a'), v('\u03c1'), plus(), many ? row(mo('\u2211', { largeop: 'true' }), space(0.2)) : row(),
+        frac(row(paren(row(v('\u03c1'), hadamard(), vs('c', 'L'))), mi('I'), space(0.2), fn('max', row(dotted(v('N'), v('L')), comma(), mn('0')))),
+          row(mi('\u03c0'), mo('\u2062'), space(0.2), fn('max', row(sq(mi('d')), comma(), mn('0.01')))))))]] },
+      { kind: 'numbers', equations: lo.terms.map(t => math(`light ${t.index + 1} term`, sub(v('c'), mu(many ? `light ${t.index + 1}` : 'light')), eq(),
+        frac(row(paren(row(tuple(lo.albedo), hadamard(), tuple(t.lightColor, 2))), cdot(), mn(String(t.intensity)), cdot(), num(t.nDotL, 4)),
+          row(mi('\u03c0'), cdot(), num(Math.max(t.distanceSquared, 0.01), 3))), eq(), tuple(t.direct, 4))) },
+      { kind: 'result', text: ['Linear color ', V('c'), ' = ', X(num(lo.ambient, 2), tuple(lo.albedo)), many ? ' plus the light terms = ' : ' plus the light term = ', X(tuple(lo.color, 4)), '.'],
+        interpretation: ['Switch ray tracing back on to see what changes: shadow rays can remove a light’s term, and a mirror sends the ray on to whatever it reflects.'] },
+    ],
+  });
+}
+
 function endSection(ch: Chapter, story: MathStory): void {
   const end = story.end;
   if (end.reason === 'sky') {
@@ -395,9 +414,10 @@ function endSection(ch: Chapter, story: MathStory): void {
 
 function displaySection(ch: Chapter, story: MathStory): void {
   const d = story.display;
-  const input = (): Element => d.mode === 'beauty' ? prime(mi('c')) : mi('c');
+  const toned = d.mode === 'beauty' || d.mode === 'raster';
+  const input = (): Element => toned ? prime(mi('c')) : mi('c');
   const law: Array<[string, Element]> = [];
-  if (d.mode === 'beauty') law.push(['tone mapping', row(prime(mi('c')), eq(), frac(mi('c'), row(mn('1'), plus(), mi('c'))))]);
+  if (toned) law.push(['tone mapping', row(prime(mi('c')), eq(), frac(mi('c'), row(mn('1'), plus(), mi('c'))))]);
   if (d.mode !== 'hit') law.push(['sRGB encoding', row(prime(mi('c'), '\u2033'), eq(), cases([
     [row(mn('12.92'), mo('\u2062'), input()), row(mtext('if'), space(0.4), input(), mo('\u2264'), mn('0.0031308'))],
     [row(mn('1.055'), sup(input(), frac(mn('1'), mn('2.4'))), minus(), mn('0.055')), mtext('otherwise')],
@@ -405,11 +425,11 @@ function displaySection(ch: Chapter, story: MathStory): void {
   const final = (): Element => d.mode === 'hit' ? mi('c') : prime(mi('c'), '\u2033');
   law.push(['quantization', row(mu('byte'), eq(), fn('round', row(mn('255'), mo('\u2062'), final())))]);
   const numbers: Element[] = [];
-  if (d.mode === 'beauty') numbers.push(math('tone mapped', prime(v('c')), eq(), tuple(d.toneMapped!, 4)));
+  if (toned) numbers.push(math('tone mapped', prime(v('c')), eq(), tuple(d.toneMapped!, 4)));
   numbers.push(math('encoded', prime(v('c'), d.mode === 'hit' ? '' : '\u2033'), eq(), tuple(d.encoded, 4)));
   ch.add({
     title: 'From light to a screen color',
-    purpose: d.mode === 'beauty'
+    purpose: toned
       ? ['Lighting is computed in linear color, where values can exceed 1, and converted once, at the end: each channel is compressed into ', X(row(fence('['), mn('0'), comma(), mn('1'), fence(')'))), ' by Reinhard’s curve, encoded for the screen, then rounded to an 8-bit number.']
       : d.mode === 'albedo' ? ['The surface color is encoded for the screen (sRGB) without tone mapping.'] : ['The hit view shows pure white or black, with no conversion.'],
     figure: displayFigure(d),
@@ -564,6 +584,7 @@ function draw(container: HTMLElement, view: ViewState | null): void {
     if (r && r.order === hit.order + 1) { reflectSection(ch, r); reflectIndex++; }
   });
   if (story.shade) shadeSection(ch, story.shade);
+  if (story.local) localSection(ch, story.local);
   endSection(ch, story);
   displaySection(ch, story);
   // Collapsed, the chapter shows only its last step, the pixel's final color, as

@@ -11,6 +11,7 @@ import {
   VIEW_ALBEDO,
   VIEW_BEAUTY,
   VIEW_HIT,
+  VIEW_RASTER,
 } from './constants';
 
 /**
@@ -82,6 +83,8 @@ export function viewModeCode(mode: ViewMode): number {
       return VIEW_HIT;
     case 'albedo':
       return VIEW_ALBEDO;
+    case 'raster':
+      return VIEW_RASTER;
     default:
       throw new SceneValidationError(`unknown view mode "${String(mode)}"`);
   }

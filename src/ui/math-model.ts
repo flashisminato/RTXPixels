@@ -99,6 +99,14 @@ export type ExtraLightTerm = {
   direct: Vec3;
 };
 
+export type LocalStep = {
+  surface: HitStep;
+  albedo: Vec3; ambient: number;
+  /** One term per light: rho / pi (.) c_L * I * max(N.L, 0) / max(d^2, 0.01). */
+  terms: Array<{ index: number; lightColor: Vec3; intensity: number; nDotL: number; distanceSquared: number; direct: Vec3 }>;
+  color: Vec3;
+};
+
 export type EndStep =
   | { reason: 'surface' }
   | { reason: 'sky'; direction: Vec3; ts: number; bottom: Vec3; top: Vec3; color: Vec3 }
@@ -123,6 +131,8 @@ export type MathStory = {
   hits: HitStep[];
   reflects: ReflectStep[];
   shade: ShadeStep | null;
+  /** Ray tracing off: the first surface's direct lighting, with no shadow checks. */
+  local: LocalStep | null;
   end: EndStep;
   display: DisplayStep;
 };
@@ -269,11 +279,31 @@ function shadeStep(view: ViewState, surface: HitStep, event: ShadowEvent, extras
   };
 }
 
+function localStep(view: ViewState, surface: HitStep): LocalStep {
+  const { scene } = view;
+  const albedo = scene.materials[surface.materialIndex].albedo;
+  const from = add(surface.point, scale(surface.normal, EPS));
+  const color = albedo.map(c => scene.ambient * c) as Vec3;
+  const lights = [scene.light, ...(scene.extraLights ?? [])];
+  const terms = lights.map((light, index) => {
+    const offset = sub(light.position, from);
+    const distanceSquared = dot(offset, offset);
+    const distance = Math.sqrt(distanceSquared);
+    const toLight: Vec3 = distance > 0 ? scale(offset, 1 / distance) : [0, 0, 0];
+    const nDotL = Math.max(dot(surface.normal, toLight), 0);
+    const e = light.intensity * nDotL / Math.max(distanceSquared, 0.01);
+    const direct = [0, 1, 2].map(i => albedo[i] / Math.PI * light.color[i] * e) as Vec3;
+    for (let i = 0; i < 3; i++) color[i] += direct[i];
+    return { index, lightColor: light.color, intensity: light.intensity, nDotL, distanceSquared, direct };
+  });
+  return { surface, albedo, ambient: scene.ambient, terms, color };
+}
+
 function displayStep(mode: ViewMode, linear: Vec3): DisplayStep {
   const encoded = encodeDisplay(linear, mode);
   return {
     mode, linear,
-    toneMapped: mode === 'beauty' ? linear.map(c => Math.max(0, c) / (1 + Math.max(0, c))) as Vec3 : null,
+    toneMapped: mode === 'beauty' || mode === 'raster' ? linear.map(c => Math.max(0, c) / (1 + Math.max(0, c))) as Vec3 : null,
     encoded,
     bytes: encoded.map(value => Math.round(value * 255)) as [number, number, number],
   };
@@ -310,6 +340,9 @@ export function buildMathStory(view: ViewState | null): MathStoryResult {
     }
   }
   // Shadow events of all lights belong to the last surface, which ends the path.
+  // Ray tracing off: recompute the direct light at the first surface, with V = 1.
+  let local: LocalStep | null = null;
+  if (mode === 'raster' && endReason === 'surface' && hits.length > 0) local = localStep(view, hits[0]);
   if (primaryShadow && hits.length > 0) {
     shade = shadeStep(view, hits[hits.length - 1], primaryShadow, extraShadows, endReason === 'surface');
   }
@@ -340,7 +373,7 @@ export function buildMathStory(view: ViewState | null): MathStoryResult {
       mode,
       maxRedirects: view.controls.maxRedirects,
       pixel: pixelStep(view),
-      hits, reflects, shade, end,
+      hits, reflects, shade, local, end,
       display: displayStep(mode, inspection.result.linearColor),
     },
   };

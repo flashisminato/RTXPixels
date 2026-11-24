@@ -90,19 +90,16 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     'This steps the camera around the scene. The center sphere does not rotate, so there is no sphere-spin control.', CONTROL_RANGES.cameraYawDeg, value => {
       commitNumber(value, CONTROL_RANGES.cameraYawDeg, current?.controls.cameraYawDeg, snapped => actions.dispatch({ type: 'camera-yaw', value: snapped }));
     });
-  const redirects = rangeControl(signal, `${ns}-bounces`, 'Mirror bounces to follow',
-    '0 does not follow a mirror. 4 is the maximum. A mirror that needs another bounce is left black; the next hit is not guessed.',
-    { min: 0, max: MAX_REDIRECTS, step: 1 }, value => {
-      commitNumber(value, { min: 0, max: MAX_REDIRECTS, step: 1 }, current?.controls.maxRedirects, snapped => actions.dispatch({ type: 'redirects', value: snapped }));
-    });
-  const viewMode = radioControl(signal, `${ns}-view`, 'What the picture shows',
-    'The last two stop at the first surface. They are not the full picture’s reflection.', [
-      { value: 'beauty', name: 'Full picture', hint: 'Reflections and shadows.' },
-      { value: 'hit', name: 'First surface, hit or miss', hint: 'White or black. A diagnostic, not the reflected color.' },
-      { value: 'albedo', name: 'First surface color', hint: 'The surface’s own color, or black on a miss.' },
+  // Ray tracing on is the full picture (up to four mirror bounces, a shadow ray per
+  // light); off shades only the first surface with direct light, like a rasterizer.
+  const rayTracing = radioControl(signal, `${ns}-raytracing`, 'Ray tracing',
+    'Switch it off to see what a game draws without ray tracing, then back on to see what it adds.', [
+      { value: 'beauty', name: 'On', hint: 'Mirror reflections and a shadow from every light.' },
+      { value: 'raster', name: 'Off', hint: 'Each surface lit directly: no shadows, and the mirror shows no reflection.' },
     ], value => {
       const mode = asViewMode(value);
       if (!mode || current?.controls.viewMode === mode) return;
+      if (mode === 'beauty' && current && current.controls.maxRedirects !== MAX_REDIRECTS) actions.dispatch({ type: 'redirects', value: MAX_REDIRECTS });
       actions.dispatch({ type: 'view-mode', value: mode });
     });
 
@@ -249,7 +246,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   tabPanel('object', 'Object', [target.wrap, mirror.wrap]);
   tabPanel('camera', 'Camera', [camera.wrap]);
   const lightsTab = tabPanel('lights', 'Lights · 1', [lightList], lightsHelp);
-  tabPanel('picture', 'Picture', [redirects.wrap, viewMode.wrap]);
+  tabPanel('picture', 'Picture', [rayTracing.wrap]);
   selectTab(0);
   const controlsHead = document.createElement('div');
   controlsHead.className = 'controls-head';
@@ -471,9 +468,8 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       syncRange(target.input, target.output, view.controls.targetX, view.controls.targetX.toFixed(2));
       syncLights(view);
       syncRange(camera.input, camera.output, view.controls.cameraYawDeg, `${Math.round(view.controls.cameraYawDeg)}°`);
-      syncRange(redirects.input, redirects.output, view.controls.maxRedirects, String(view.controls.maxRedirects));
       syncRadios(mirror.inputs, view.controls.mirrorMode);
-      syncRadios(viewMode.inputs, view.controls.viewMode);
+      syncRadios(rayTracing.inputs, view.controls.viewMode);
       const matching = view.inspection && view.inspection.sceneVersion === view.sceneVersion ? view.inspection : null;
       if (matching && matching.pixel.width > 0 && matching.pixel.height > 0) {
         pixelSize = { width: matching.pixel.width, height: matching.pixel.height };
@@ -676,7 +672,7 @@ function asMode(value: string): Mode | null {
 }
 
 function asViewMode(value: string): ViewMode | null {
-  return value === 'beauty' || value === 'hit' || value === 'albedo' ? value : null;
+  return value === 'beauty' || value === 'raster' ? value : null;
 }
 
 function syncRange(input: HTMLInputElement, output: HTMLElement, value: number, text: string): void {

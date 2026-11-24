@@ -48,6 +48,7 @@ export function checkGPUParity() {
         if (example) points.push([example.inspection.pixel.x, example.inspection.pixel.y]);
         const variants: { mode: ViewMode; debug: number; tolerance: number }[] = [
           { mode: 'beauty', debug: DEBUG_OFF, tolerance: 3 },
+          { mode: 'raster', debug: DEBUG_OFF, tolerance: 3 },
           { mode: 'hit', debug: DEBUG_OFF, tolerance: 0 },
           { mode: 'albedo', debug: DEBUG_OFF, tolerance: 2 },
           { mode: 'beauty', debug: DEBUG_IDS, tolerance: 0 },

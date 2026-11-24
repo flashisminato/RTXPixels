@@ -19,7 +19,7 @@ export function validateControls(value: unknown): asserts value is Controls {
   const controls = record(value, 'Controls');
   for (const [key, range] of Object.entries(CONTROL_RANGES)) finiteRange(controls[key], range.min, range.max, key);
   if (controls.mirrorMode !== 'matte' && controls.mirrorMode !== 'mirror') throw new RangeError('Unsupported mirror mode.');
-  if (controls.viewMode !== 'beauty' && controls.viewMode !== 'hit' && controls.viewMode !== 'albedo') throw new RangeError('Unsupported view mode.');
+  if (controls.viewMode !== 'beauty' && controls.viewMode !== 'raster' && controls.viewMode !== 'hit' && controls.viewMode !== 'albedo') throw new RangeError('Unsupported view mode.');
   finiteRange(controls.maxRedirects, 0, MAX_REDIRECTS, 'Redirect budget');
   if (!Number.isInteger(controls.maxRedirects)) throw new RangeError('Redirect budget must be an integer.');
   if (!Array.isArray(controls.extraLights) || controls.extraLights.length > MAX_LIGHTS - 1) {

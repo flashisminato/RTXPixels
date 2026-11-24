@@ -348,3 +348,32 @@ test('Figure 2.1 stays room-sized for far bounces, and Reset restores the view, 
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('Picture tab: one Ray tracing On / Off switch changes the picture, the answer and chapter 3', async () => {
+  const { page, context, errors } = await open();
+  await page.getByRole('tab', { name: 'Picture' }).click();
+  const panel = await page.evaluate(() => ({
+    ranges: document.querySelectorAll('.param-panel-picture input[type=range]').length,
+    radios: [...document.querySelectorAll('.param-panel-picture input[type=radio]')].map(r => [r.value, r.checked]),
+  }));
+  assert.deepEqual(panel, { ranges: 0, radios: [['beauty', true], ['raster', false]] }, 'only the on/off switch remains');
+  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await page.waitForFunction(() => document.querySelector('pre')?.textContent);
+  // The WebGL picture itself is compared with the CPU in test:browser; here, the recorded trace.
+  const trace = () => page.locator('pre').evaluate(p => JSON.parse(p.textContent).result.events.map(e => e.kind).join(','));
+  const before = await trace();
+  const v0 = await version(page);
+  await page.getByRole('radio', { name: /^Off/ }).check();
+  await ready(page, v0 + 1);
+  await page.waitForFunction(() => document.querySelector('.explain .summary')?.textContent.includes('Ray tracing is off'));
+  assert.ok(before.includes('reflect'), `ray tracing on follows the mirror: ${before}`);
+  assert.equal(await trace(), 'hit,end', 'ray tracing off stops at the first surface');
+  await expandMath(page);
+  await page.locator('.math-step h3', { hasText: 'Lighting without ray tracing' }).waitFor();
+  const v1 = await version(page);
+  await page.getByRole('radio', { name: /^On/ }).check();
+  await ready(page, v1 + 1);
+  await page.waitForFunction(() => !document.querySelector('.explain .summary')?.textContent.includes('Ray tracing is off'));
+  assert.deepEqual(errors, []);
+  await context.close();
+});
