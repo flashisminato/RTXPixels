@@ -261,7 +261,7 @@ code.listing {
 }
 code.listing .line::before {
   counter-increment: ln; content: counter(ln); display: inline-block; width: 3.2em; padding-right: 1em; text-align: right;
-  color: var(--construction); user-select: none;
+  color: var(--graphite); user-select: none; /* text, so AA contrast: graphite, not construction gray */
 }
 code.listing .c { color: var(--graphite); font-style: italic; }
 .impl-link { margin: var(--s3) 0 0; font-size: 14px; }

@@ -34,6 +34,8 @@ These integration hooks are used by other people's tests and code. Keep every on
 | Buttons named exactly *Inspect a computed mirror example* and *Reset* | AI 3 tests | Restyle freely; keep the accessible names. |
 | `explain.ts` exports `buildExplanation, project, screenMapper, incidenceDegrees, reflectionDegrees, SCHEMATIC_NOTE, CANVAS_LABEL`; `selection.ts` exports | AI 2 tests | Extend, never rename or change their results. |
 | No runtime network requests | Plan: offline after load | Bundle every font locally. No CDN. |
+| UI never imports from `src/render/index.ts` | AI 3 lifecycle tests replace that module with stubs exporting only `createRenderer` | Import the specific submodule (e.g. `src/render/shaders/trace.frag.ts`). Learned in P6: importing through the index broke 2 of AI 3's tests. |
+| Figures are rebuilt on every update | Everything interactive | Put listeners and pointer capture on persistent hosts, restore focus after a rebuild, persist open disclosures. |
 
 ---
 
@@ -288,3 +290,28 @@ control, and visual review at 1280 px and 390 px.
 | P5 Reactive | Drag pixel / object / light; linked highlighting | Drags dispatch real actions; keyboard equivalents exist |
 | P6 Transparency | CPU and GPU listings | Listings come from the real sources, not copies; still one `<pre>` |
 | P7 Handoff | Notes for AI 2, screenshots, honest limits | Branch pushed; nothing claimed that was not run |
+
+---
+
+## 8. Implementation record (branch `feature/editorial-ui`)
+
+| Phase | Commit summary | Notes |
+|---|---|---|
+| P1 Foundations | Tokens, bundled fonts, paper theme | *FAP Math* = Latin Modern Math 1.959 subset with its OpenType MATH table (195 KB), renamed per the GUST Font License; Inter variable; IBM Plex Mono 400/500. Licences and a derivation README beside the files. |
+| P2 Structure | Chapters, index with scroll-spy, numeric pixel selector, numbering | Scroll-spy handles the page-bottom and clicked-chapter edge cases. |
+| P3 Follow one pixel | SVG schematic (Figure 2.1), derivation-style steps | Spheres are exact projected ellipses (semi-axes R√eig(LLᵀ)); scored label placement; legible minimum figure width on phones. |
+| P4 Mathematics | Laws, assumptions, derivations, numbers, results, checks | Equations numbered (3.k) in a grid column; derivations aligned with an HTML grid of inline MathML. |
+| P5 Reactive | Drag pixel / object / light; linked highlighting | All drags have keyboard equivalents and ARIA slider semantics. |
+| P6 Transparency | Chapter 4 listings from the real CPU and GPU source | `?raw` import of `src/core`; GLSL from `buildTraceFragmentSource()`. |
+
+**Deviations from the specification, and why**
+
+- **Native MathML instead of KaTeX/MathJax.** Same typesetting with a Computer Modern font, selectable and accessible, no runtime script, no `package.json` change (AI 3 owns it). Browsers without MathML Core would need KaTeX.
+- **Derivation alignment uses CSS grid, not `mtable`.** Measured in Chrome: `text-align` is ignored inside MathML table cells, and making the cells flex boxes collapses the table.
+- **Delimiters stretch only around tall content.** Latin Modern's stretch variants are wider than its base glyphs and left gaps in single-line brackets.
+- **Figures scroll inside their frame on narrow screens** (minimum ~600 px) rather than shrinking labels below ~9 px.
+
+**Still open (not in the interface's ownership)**
+
+- `fitBuffer` floors the drawing-buffer height (640×359 on many hosts). On this branch AI 3's browser suite passes 10/10 only because the test viewport's host now floors to 360. The `Math.round` fix is still needed in `src/core/frame.ts`.
+- Safari, Firefox and phone hardware are not verified; MathML rendering differs most across engines.
