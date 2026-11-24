@@ -68,6 +68,7 @@ export function createStore(initialScene: Scene = createPreset()) {
         case 'ball-remove': controls.balls.splice(ballIndex(action.index), 1); break;
         case 'ball-color': controls.balls[ballIndex(action.index)].color = action.value; break;
         case 'ball-mode': controls.balls[ballIndex(action.index)].mode = action.value; break;
+        case 'ball-physics': controls.balls[ballIndex(action.index)].physics = action.value; break;
         case 'ball-move': controls.balls[ballIndex(action.index)][axisOf(action.axis)] = action.value; break;
         case 'balls-step': {
           if (!Array.isArray(action.positions) || action.positions.length !== controls.balls.length) throw new RangeError('One position per ball is required.');

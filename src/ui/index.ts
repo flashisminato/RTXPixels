@@ -238,7 +238,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   // They drop in from the air (see physics-driver.ts) and can be moved in Figure 2.1.
   const ballsHelp = document.createElement('p');
   ballsHelp.className = 'panel-help';
-  ballsHelp.textContent = `Add up to ${MAX_BALLS} balls. Each drops in from the air, bounces and settles. Give it a color, or make it a mirror. Click a ball in Figure 2.1 to move it with the x, y and z arrows.`;
+  ballsHelp.textContent = `Add up to ${MAX_BALLS} balls. Each drops in from the air, bounces and settles. Give it a color, or make it a mirror. Set it to Static to keep it exactly where you put it, even in mid-air. Click a ball in Figure 2.1 to move it with the x, y and z arrows.`;
   const ballList = document.createElement('div');
   ballList.className = 'light-list ball-list';
   const addBall = document.createElement('button');
@@ -248,7 +248,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   addBall.addEventListener('click', () => {
     if ((current?.controls.balls.length ?? 0) < MAX_BALLS) actions.dispatch({ type: 'ball-add' });
   }, { signal });
-  type BallCard = { finish: HTMLInputElement[]; colors: HTMLInputElement[] };
+  type BallCard = { finish: HTMLInputElement[]; colors: HTMLInputElement[]; motion: HTMLInputElement[] };
   let ballCards: BallCard[] = [];
   let ballLayout = '';
   let ballCardsLifecycle: AbortController | null = null;
@@ -279,14 +279,25 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
           BALL_COLORS.map(c => ({ name: `Ball ${ball.n} ${c.name}`, color: cssColor(c.albedo) })), color => {
             if (current?.controls.balls[index]?.color !== color) actions.dispatch({ type: 'ball-color', index, value: color });
           });
+        // Physics: it falls, bounces and gets pushed. Static: it stays exactly where it
+        // is put, even in mid-air, and other balls bounce off it.
+        const motion = radioControl(cardSignal, `${ns}-ball${ball.n}-motion`, 'Motion', '', [
+          { value: 'physics', name: 'Physics', hint: '' },
+          { value: 'static', name: 'Static', hint: '' },
+        ], value => {
+          const physics = value === 'physics';
+          if (current?.controls.balls[index] && current.controls.balls[index].physics !== physics) actions.dispatch({ type: 'ball-physics', index, value: physics });
+        });
+        motion.wrap.querySelector('.control-help')?.remove();
+        motion.wrap.classList.add('compact-choices');
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.className = 'button button-secondary remove-light';
         remove.textContent = `Remove ball ${ball.n}`;
         remove.addEventListener('click', () => actions.dispatch({ type: 'ball-remove', index }), { signal: cardSignal });
-        card.append(colors.wrap, finish.wrap, remove);
+        card.append(colors.wrap, finish.wrap, motion.wrap, remove);
         ballList.append(card);
-        return { finish: finish.inputs, colors: colors.inputs };
+        return { finish: finish.inputs, colors: colors.inputs, motion: motion.inputs };
       });
       ballList.append(addBall);
     }
@@ -298,6 +309,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       if (!ballCards[i]) return;
       syncRadios(ballCards[i].finish, ball.mode);
       syncRadios(ballCards[i].colors, String(ball.color));
+      syncRadios(ballCards[i].motion, ball.physics ? 'physics' : 'static');
     });
   }
 

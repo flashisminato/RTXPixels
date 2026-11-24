@@ -61,8 +61,9 @@ export type Inspection = {
   pixel: { x: number; y: number; width: number; height: number };
   ray: Ray; result: TraceResult;
 };
-/** An added ball: its label number (Ball n), position, paint (index into BALL_COLORS) and finish. */
-export type BallControl = { n: number; x: number; y: number; z: number; color: number; mode: Mode };
+/** An added ball: its label number (Ball n), position, paint (index into BALL_COLORS), finish,
+ * and whether physics moves it (false: it stays exactly where it is put, even in mid-air). */
+export type BallControl = { n: number; x: number; y: number; z: number; color: number; mode: Mode; physics: boolean };
 export type Axis = 'x' | 'y' | 'z';
 /** One extra light's controls. `tint` picks its color from EXTRA_LIGHT_TINTS. */
 export type LightControl = { x: number; y: number; z: number; intensity: number; tint: number };
@@ -94,6 +95,7 @@ export type Action =
   | { type: 'ball-remove'; index: number }
   | { type: 'ball-color'; index: number; value: number }
   | { type: 'ball-mode'; index: number; value: Mode }
+  | { type: 'ball-physics'; index: number; value: boolean }
   | { type: 'ball-move'; index: number; axis: Axis; value: number }
   /** One physics frame: every added ball's new position, in order. */
   | { type: 'balls-step'; positions: Vec3[] }
