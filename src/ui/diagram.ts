@@ -397,6 +397,8 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
     ...[...segments.flatMap(segment => [segment.from, segment.to]), ...marks.map(m => m.at)].filter(p => insideBox(p, ROOM_LIMIT)),
     ...lights.map(l => l.position),
     ...(camera ? [camera] : []),
+    // The back wall belongs to the room, so the frame reaches it.
+    ...(scene?.objects ?? []).flatMap(o => o.kind === 'plane' && o.normal[0] === 0 && o.normal[1] === 0 && insideBox(o.point, ROOM_LIMIT) ? [o.point] : []),
     ...spheres.flatMap(s => [0, 1, 2].flatMap(axis => [-1, 1].map(sign => {
       const p: Vec3 = [...s.center]; p[axis] += sign * s.radius; return p;
     }))),
@@ -445,6 +447,33 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
     [[box.x0, box.y1, zBack], [box.x1, box.y1, zBack]], [[xFront, 0, zBack], [xFront, box.y1, zBack]],
     [[xBack, box.y1, box.z0], [xBack, box.y1, box.z1]], [[xBack, 0, zFront], [xBack, box.y1, zFront]],
   ] as Array<[Vec3, Vec3]>) f.line(toScreen(a), toScreen(b), { color: FRAME, width: 0.9 });
+
+  // The real back wall (an infinite plane facing -z), as a pane across the frame:
+  // tinted with its paint, or glassy with a few sheen lines when it is a mirror.
+  for (const wall of scene?.objects ?? []) {
+    if (wall.kind !== 'plane' || Math.abs(Math.abs(wall.normal[2]) - Math.hypot(...wall.normal)) > 1e-9) continue;
+    const z = wall.point[2];
+    if (z < box.z0 || z > box.z1 + 0.6) continue;
+    const material = scene?.materials[wall.materialIndex];
+    const mirror = material?.mode === 'mirror';
+    const corners = ([[box.x0, 0], [box.x1, 0], [box.x1, box.y1], [box.x0, box.y1]] as Array<[number, number]>)
+      .map(([x, y]) => toScreen([x, y, z]));
+    const pane = f.path(`M${corners.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' L')} Z`, {
+      stroke: mirror ? '#8aa3b5' : FRAME, width: mirror ? 1.2 : 0.9,
+      fill: mirror ? '#dfe9f1' : material ? cssColor(material.albedo) : 'none',
+    });
+    pane.setAttribute('fill-opacity', mirror ? '0.55' : '0.22');
+    titled(pane, `${wall.id === 'back-wall' ? 'back wall' : wall.id} at z = ${z}${mirror ? ', a mirror' : ''}`);
+    if (mirror) {
+      // Sheen: short diagonal strokes, the conventional sign for a reflective pane.
+      for (const t of [0.18, 0.26, 0.7]) {
+        const a = toScreen([box.x0 + (box.x1 - box.x0) * t, box.y1 * 0.82, z]);
+        const b = toScreen([box.x0 + (box.x1 - box.x0) * (t + 0.08), box.y1 * 0.55, z]);
+        f.line(a, b, { color: '#ffffff', width: 3 });
+      }
+      f.words(plus(toScreen([box.x1, box.y1, z]), pt(-6, 14)), 'mirror wall', { anchor: 'end', color: '#5b7487', size: 12 });
+    }
+  }
 
   // Axes along the near frame edges: x along the front floor edge, z along the
   // near side edge, y up the front corner of the back side wall. Tick numbers sit

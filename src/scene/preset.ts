@@ -21,6 +21,16 @@ export const EXTRA_LIGHT_TINTS: readonly Vec3[] = [
 ];
 const MAIN_LIGHT_COLOR: Vec3 = [1, 0.94, 0.84];
 
+/** Back-wall paints (linear RGB). The first is the original teal. */
+export const WALL_COLORS: ReadonlyArray<{ name: string; albedo: Vec3 }> = [
+  { name: 'teal', albedo: [0.08, 0.3, 0.32] },
+  { name: 'cream', albedo: [0.78, 0.7, 0.52] },
+  { name: 'brick', albedo: [0.45, 0.08, 0.05] },
+  { name: 'navy', albedo: [0.03, 0.06, 0.22] },
+  { name: 'sage', albedo: [0.25, 0.38, 0.22] },
+  { name: 'charcoal', albedo: [0.06, 0.06, 0.07] },
+];
+
 /** Where a newly added light appears, by tint, so it is visible straight away. */
 const NEW_LIGHT_SPOTS: readonly Omit<LightControl, 'tint'>[] = [
   { x: 3, y: 4.5, z: -1, intensity: 60 },
@@ -40,7 +50,8 @@ export function newExtraLight(existing: readonly LightControl[]): LightControl |
 export function initialControls(): Controls {
   return { targetX: -2.1, lightX: -3, cameraYawDeg: 0,
     mirrorMode: 'mirror', maxRedirects: 4, viewMode: 'beauty',
-    lightY: 5, lightZ: -2, lightIntensity: 55, extraLights: [] };
+    lightY: 5, lightZ: -2, lightIntensity: 55, extraLights: [],
+    wallColor: 0, wallMode: 'matte' };
 }
 
 export function createPreset(input: Partial<Controls> = initialControls()): Scene {
@@ -58,7 +69,7 @@ export function createPreset(input: Partial<Controls> = initialControls()): Scen
       { mode: controls.mirrorMode, albedo: [0.65, 0.75, 0.9] },
       { mode: 'matte', albedo: [0.9, 0.15, 0.065] },
       { mode: 'matte', albedo: [0.38, 0.32, 0.22] },
-      { mode: 'matte', albedo: [0.08, 0.3, 0.32] },
+      { mode: controls.wallMode, albedo: [...WALL_COLORS[controls.wallColor].albedo] },
     ],
     camera: { position: [7 * Math.sin(yaw), 2.4, 1.5 - 7 * Math.cos(yaw)], target: [0, 0.9, 1.5], fovYDeg: 48 },
     light: { position: [controls.lightX, controls.lightY, controls.lightZ], color: [...MAIN_LIGHT_COLOR], intensity: controls.lightIntensity },

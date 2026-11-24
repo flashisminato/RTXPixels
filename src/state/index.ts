@@ -75,6 +75,8 @@ export function createStore(initialScene: Scene = createPreset()) {
         }
         case 'camera-yaw': controls.cameraYawDeg = action.value; break;
         case 'mirror-mode': controls.mirrorMode = action.value; break;
+        case 'wall-color': controls.wallColor = action.value; break;
+        case 'wall-mode': controls.wallMode = action.value; break;
         case 'redirects': controls.maxRedirects = action.value; break;
         case 'view-mode': controls.viewMode = action.value; break;
         case 'reset': Object.assign(controls, initialControls()); break;

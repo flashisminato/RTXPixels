@@ -377,3 +377,23 @@ test('Picture tab: one Ray tracing On / Off switch changes the picture, the answ
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('Object tab: back wall color swatches and a Paint / Mirror finish drive the scene and Figure 2.1', async () => {
+  const { page, context, errors } = await open();
+  const swatches = await page.locator('.swatch input').count();
+  assert.equal(swatches, 6);
+  const v0 = await version(page);
+  await page.getByRole('radio', { name: 'brick' }).check();
+  await ready(page, v0 + 1);
+  const v1 = await version(page);
+  await page.getByRole('radio', { name: /^Mirror/ }).check();
+  await ready(page, v1 + 1);
+  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.ray-diagram svg text')].some(t => t.textContent === 'mirror wall'));
+  const v2 = await version(page);
+  await page.getByRole('radio', { name: /^Paint/ }).check();
+  await ready(page, v2 + 1);
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('.ray-diagram svg text')].some(t => t.textContent === 'mirror wall')), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

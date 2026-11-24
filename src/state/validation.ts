@@ -1,6 +1,6 @@
 import { MAX_LIGHTS, MAX_MATERIALS, MAX_OBJECTS, MAX_REDIRECTS } from '../contracts.ts';
 import type { Controls, Scene } from '../contracts.ts';
-import { CONTROL_RANGES, EXTRA_LIGHT_TINTS } from '../scene/preset.ts';
+import { CONTROL_RANGES, EXTRA_LIGHT_TINTS, WALL_COLORS } from '../scene/preset.ts';
 
 function record(value: unknown, name: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${name} must be an object.`);
@@ -19,6 +19,9 @@ export function validateControls(value: unknown): asserts value is Controls {
   const controls = record(value, 'Controls');
   for (const [key, range] of Object.entries(CONTROL_RANGES)) finiteRange(controls[key], range.min, range.max, key);
   if (controls.mirrorMode !== 'matte' && controls.mirrorMode !== 'mirror') throw new RangeError('Unsupported mirror mode.');
+  if (controls.wallMode !== 'matte' && controls.wallMode !== 'mirror') throw new RangeError('Unsupported wall finish.');
+  finiteRange(controls.wallColor, 0, WALL_COLORS.length - 1, 'Wall color');
+  if (!Number.isInteger(controls.wallColor)) throw new RangeError('Wall color must be an integer.');
   if (controls.viewMode !== 'beauty' && controls.viewMode !== 'raster' && controls.viewMode !== 'hit' && controls.viewMode !== 'albedo') throw new RangeError('Unsupported view mode.');
   finiteRange(controls.maxRedirects, 0, MAX_REDIRECTS, 'Redirect budget');
   if (!Number.isInteger(controls.maxRedirects)) throw new RangeError('Redirect budget must be an integer.');
