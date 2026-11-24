@@ -142,8 +142,9 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 .pixel-line { font-family: var(--font-code); font-size: 14px; font-variant-numeric: tabular-nums; color: var(--graphite); }
 .summary { font-size: 19px; line-height: 1.5; }
 .schematic { margin: var(--s6) 0; }
-.schematic figcaption { margin-bottom: var(--s2); }
-.ray-diagram { width: 100%; aspect-ratio: 16 / 9; display: block; background: var(--paper); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.schematic figcaption { margin-bottom: var(--s2); font-size: 14px; }
+.ray-diagram { width: 100%; background: var(--paper); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); }
+.ray-diagram > svg { display: block; width: 100%; height: auto; }
 .events { list-style: none; margin: var(--s4) 0 0; padding: 0; counter-reset: step; }
 .events li { position: relative; border-top: 1px solid var(--rule); padding: var(--s3) 0 var(--s3) 2.5rem; counter-increment: step; }
 .events h3 { margin: 0 0 var(--s1); font-size: 16px; font-weight: 600; }
@@ -185,3 +186,13 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 
 /* Running text in chapter 2 keeps to the reading column; the figure may be wider. */
 .explain > p, .explain > h3, .events { max-width: var(--column); }
+.step-kind { display: block; margin-bottom: 2px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--graphite); }
+.events li[data-kind='end'] h3 { color: var(--ink); }
+
+/* Narrow screens: figures keep a legible minimum size and scroll sideways inside
+   their own frame (the page itself never scrolls horizontally). */
+@media (max-width: 699px) {
+  .ray-diagram, .math-fig { overflow-x: auto; overscroll-behavior-x: contain; }
+  .ray-diagram > svg { min-width: 620px; }
+  .math-fig .math-figure { min-width: 600px; }
+}

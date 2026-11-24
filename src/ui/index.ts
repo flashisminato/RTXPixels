@@ -153,9 +153,10 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   figure.className = 'schematic';
   const caption = document.createElement('figcaption');
   caption.append(figureLabel('Figure 2.1'), SCHEMATIC_NOTE);
-  const diagramCanvas = document.createElement('canvas');
-  diagramCanvas.className = 'ray-diagram';
-  figure.append(caption, diagramCanvas);
+  // An SVG host, not a canvas: the image canvas stays the first <canvas> in the page.
+  const diagramHost = document.createElement('div');
+  diagramHost.className = 'ray-diagram';
+  figure.append(caption, diagramHost);
   const events = document.createElement('ol');
   events.className = 'events';
   events.setAttribute('aria-label', 'Computed steps for the selected pixel');
@@ -228,7 +229,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   shell.append(header, toc.nav, doc, record);
   root.replaceChildren(shell);
 
-  const diagram = createDiagram(diagramCanvas);
+  const diagram = createDiagram(diagramHost);
 
   function placeMarker(): void {
     if (!selection) {
@@ -316,8 +317,13 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       summary.textContent = explanation.summary;
       events.replaceChildren(...explanation.items.map(item => {
         const li = document.createElement('li');
+        li.dataset.kind = item.kind;
         const itemTitle = document.createElement('h3');
-        itemTitle.textContent = item.title;
+        // Each step names the kind of computation it records, as a derivation would.
+        const kind = document.createElement('span');
+        kind.className = 'step-kind';
+        kind.textContent = STEP_KIND[item.kind];
+        itemTitle.append(kind, item.title);
         const detail = document.createElement('p');
         detail.textContent = item.detail;
         li.append(itemTitle, detail);
@@ -325,7 +331,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       }));
       events.hidden = explanation.items.length === 0;
       renderMathPanel(mathBody, view);
-      diagram.show(explanation.diagram, explanation.summary);
+      diagram.show(explanation.diagram, explanation.summary, view.scene);
     },
     dispose() {
       if (disposed) return;
@@ -338,6 +344,8 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     },
   };
 }
+
+const STEP_KIND: Record<string, string> = { hit: 'Intersection', reflect: 'Reflection', shadow: 'Visibility', end: 'Result' };
 
 function chapter(id: string, number: string, title: string): HTMLElement {
   const section = document.createElement('section');

@@ -48,7 +48,7 @@ function mathAlphabet(text: string, style: 'italic' | 'bold'): string {
 }
 
 type Attrs = Record<string, string | number>;
-type Pt = { x: number; y: number };
+export type Pt = { x: number; y: number };
 /** Rich label: plain strings, or styled runs. b = bold upright (vectors), i = italic (scalars). */
 export type Run = string | { t: string; b?: boolean; i?: boolean; sub?: boolean; sup?: boolean };
 
@@ -61,17 +61,17 @@ function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Attrs = {}, ch
   return element;
 }
 
-const pt = (x: number, y: number): Pt => ({ x, y });
-const plus = (a: Pt, b: Pt): Pt => pt(a.x + b.x, a.y + b.y);
-const times = (a: Pt, s: number): Pt => pt(a.x * s, a.y * s);
-const between = (a: Pt, b: Pt, f: number): Pt => pt(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f);
-const unit = (a: Pt): Pt => { const l = Math.hypot(a.x, a.y) || 1; return pt(a.x / l, a.y / l); };
-const perp = (a: Pt): Pt => pt(-a.y, a.x);
+export const pt = (x: number, y: number): Pt => ({ x, y });
+export const plus = (a: Pt, b: Pt): Pt => pt(a.x + b.x, a.y + b.y);
+export const times = (a: Pt, s: number): Pt => pt(a.x * s, a.y * s);
+export const between = (a: Pt, b: Pt, f: number): Pt => pt(a.x + (b.x - a.x) * f, a.y + (b.y - a.y) * f);
+export const unit = (a: Pt): Pt => { const l = Math.hypot(a.x, a.y) || 1; return pt(a.x / l, a.y / l); };
+export const perp = (a: Pt): Pt => pt(-a.y, a.x);
 const rad = (deg: number): number => deg * Math.PI / 180;
 const clamp = (value: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, value));
 
-/** One figure: an SVG with its own arrowhead markers and drawing helpers. */
-class Figure {
+/** One figure: an SVG with its own arrowhead markers and drawing helpers. Shared by every figure in the document. */
+export class Figure {
   readonly root: SVGSVGElement;
   private readonly id: string;
   private readonly layer: SVGGElement;
