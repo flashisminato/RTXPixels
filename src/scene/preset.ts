@@ -42,7 +42,7 @@ export function newBall(existing: readonly BallControl[]): BallControl | null {
   let n = 1;
   while (used.has(n)) n++;
   const [x, z] = BALL_DROPS[(n - 1) % BALL_DROPS.length];
-  return { n, x, y: 4.2, z, color: (n - 1) % BALL_COLORS.length, mode: 'matte' };
+  return { n, x, y: 4.2, z, color: (n - 1) % BALL_COLORS.length, mode: 'matte', physics: true };
 }
 
 export const MIRROR_BALL = { center: [0, 1, 1.5] as Vec3, radius: 1 };

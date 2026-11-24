@@ -473,3 +473,22 @@ test('Balls: add one, it falls and settles; click it for the xyz gizmo; arrows m
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('Balls: a Static ball stays where it is put, even in mid-air; switching to Physics lets it fall', async () => {
+  const { page, context, errors } = await open();
+  await page.getByRole('tab', { name: /Balls/ }).click();
+  await page.locator('.add-ball').click();
+  const y = () => page.locator('[data-drag="object:ball-1"] title').evaluate(t => Number(/center \([^,]+, ([^,]+),/.exec(t.textContent)[1]));
+  // Freeze it while it is still in the air.
+  await page.waitForTimeout(150);
+  await page.getByRole('radio', { name: 'Static' }).check();
+  await page.waitForTimeout(300);
+  const frozen = await y();
+  assert.ok(frozen > 1, `stopped in mid-air at y = ${frozen}`);
+  await page.waitForTimeout(1500);
+  assert.equal(await y(), frozen, 'a static ball does not move');
+  await page.getByRole('radio', { name: 'Physics' }).check();
+  await page.waitForFunction(() => /center \([^,]+, 0\.45,/.test(document.querySelector('[data-drag="object:ball-1"] title')?.textContent ?? ''), null, { timeout: 8000 });
+  assert.deepEqual(errors, []);
+  await context.close();
+});

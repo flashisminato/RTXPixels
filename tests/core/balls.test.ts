@@ -122,3 +122,18 @@ test('with balls in the room, every pixel is explained and chapter 3 reproduces 
   assert.ok(ballHits > 20, `pixels that see a ball: ${ballHits}`);
   assert.match(buildExplanation({ ...view, inspection: inspectPixel(frame, 0, 0) }).answer, /Pixel \(0, 0\)/);
 });
+
+test('a ball can be switched to Static and back; static balls are obstacles that never move', () => {
+  const store = createStore();
+  store.dispatch({ type: 'ball-add' });
+  assert.equal(store.getSnapshot().controls.balls[0].physics, true, 'new balls follow physics');
+  store.dispatch({ type: 'ball-physics', index: 0, value: false });
+  assert.equal(store.getSnapshot().controls.balls[0].physics, false);
+  assert.throws(() => store.dispatch({ type: 'ball-physics', index: 0, value: 'yes' } as unknown as Action));
+  // In the physics, a static ball is a held body: it stays in mid-air and others bounce off it.
+  const still = { ...ball([0, 2.5, -1]), held: true };
+  const falling = ball([0.1, 4.5, -1]);
+  settle([still, falling], [], bounds, 6);
+  assert.deepEqual(still.pos, [0, 2.5, -1]);
+  assert.ok(Math.hypot(...falling.pos.map((c, i) => c - still.pos[i])) >= 2 * BALL_RADIUS - 1e-2, 'the falling ball did not pass through it');
+});

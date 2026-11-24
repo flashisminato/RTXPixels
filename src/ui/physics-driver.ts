@@ -19,6 +19,10 @@ export function createPhysicsDriver(dispatch: (action: Action) => void, reducedM
   dispose(): void;
 } {
   const bodies = new Map<number, Body>();
+  // A body is held still while grabbed in the figure, or always when its ball is static.
+  const grabbed = new Set<number>();
+  const fixed = new Set<number>();
+  const holdState = (n: number) => { const b = bodies.get(n); if (b) b.held = grabbed.has(n) || fixed.has(n); };
   let statics: StaticSphere[] = [];
   let order: number[] = [];
   let frame = 0;
@@ -69,10 +73,14 @@ export function createPhysicsDriver(dispatch: (action: Action) => void, reducedM
       const seen = new Set<number>();
       for (const ball of controls.balls) {
         seen.add(ball.n);
+        const wasFixed = fixed.has(ball.n);
+        if (ball.physics) fixed.delete(ball.n); else fixed.add(ball.n);
+        if (wasFixed && ball.physics) changed = true; // switched back on: let it fall
         const pos: Vec3 = [ball.x, ball.y, ball.z];
         const body = bodies.get(ball.n);
         if (!body) {
           bodies.set(ball.n, { pos, vel: [0, 0, 0], r: BALL_RADIUS });
+          holdState(ball.n);
           changed = true;
         } else if (!same(body.pos, pos)) {
           // Moved from outside (the gizmo, a slider): adopt it and let it fall again.
@@ -80,15 +88,16 @@ export function createPhysicsDriver(dispatch: (action: Action) => void, reducedM
           body.vel = [0, 0, 0];
           changed = true;
         }
+        holdState(ball.n);
       }
-      for (const n of [...bodies.keys()]) if (!seen.has(n)) bodies.delete(n);
+      for (const n of [...bodies.keys()]) if (!seen.has(n)) { bodies.delete(n); grabbed.delete(n); fixed.delete(n); }
       order = controls.balls.map(b => b.n);
       if (changed) wake();
     },
     hold(n, held) {
-      const body = bodies.get(n);
-      if (!body) return;
-      body.held = held;
+      if (!bodies.has(n)) return;
+      if (held) grabbed.add(n); else grabbed.delete(n);
+      holdState(n);
       if (!held) wake();
     },
     dispose() {

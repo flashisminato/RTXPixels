@@ -36,6 +36,7 @@ export function validateControls(value: unknown): asserts value is Controls {
     finiteRange(ball.color, 0, BALL_COLORS.length - 1, 'Ball color');
     if (!Number.isInteger(ball.color)) throw new RangeError('Ball color must be an integer.');
     if (ball.mode !== 'matte' && ball.mode !== 'mirror') throw new RangeError('Unsupported ball finish.');
+    if (typeof ball.physics !== 'boolean') throw new RangeError('Ball physics must be on or off.');
   }
   if (controls.viewMode !== 'beauty' && controls.viewMode !== 'raster' && controls.viewMode !== 'hit' && controls.viewMode !== 'albedo') throw new RangeError('Unsupported view mode.');
   finiteRange(controls.maxRedirects, 0, MAX_REDIRECTS, 'Redirect budget');
