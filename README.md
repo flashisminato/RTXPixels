@@ -46,6 +46,25 @@ Both feature accounts should fetch and update their feature branches from the sa
 
 Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs support a root or repository subpath; no SPA rewrites are required. The `Verify` workflow checks pushes and pull requests, then deploys the built `dist` artifact to [GitHub Pages](https://flashisminato.github.io/Ray-Tracking/) only for successful runs on `main` outside pull requests. It can also be run manually on `main`. In repository Settings → Pages, keep the source set to **GitHub Actions**; do not publish the source tree with Jekyll. Core computation works offline **after the page loads**; cold-start offline caching is not implemented.
 
+## Implementation
+
+*Moved here from chapter 4 of the web page.*
+
+The same mathematics is implemented twice. A CPU reference tracer in TypeScript produces every number on the page: the answer, the steps and the equations. A GPU shader in GLSL draws the picture (Figure 1.1). The browser tests check that the two agree pixel by pixel.
+
+| Step | CPU reference (`src/core/index.ts`) | GPU shader (`src/render/shaders/trace.frag.ts`) |
+| --- | --- | --- |
+| From a pixel to a ray: screen coordinates, the camera frame and the ray direction | `makeCameraBasis`, `makeCameraRay` | `main` |
+| Finding the nearest surface: the sphere quadratic and the plane solve | `nearestHit` | `intersectSphere`, `intersectPlane`, `nearestHit` |
+| Bounces, shadows and shading: the mirror bounce, the shadow test for each light, the shading law, and how a path ends | `trace`, `sceneLights`, `reflect` (`src/core/vector.ts`) | `traceLinear`, `shadeMatte`, `directLight`, `occluded` |
+| Display encoding: the tone curve, sRGB encoding and 8-bit rounding | `encodeDisplay` | `reinhard`, `linearToSrgbChannel`, `linearToSrgb` |
+
+## Limits and credits
+
+*Moved here from chapter 5 of the web page.*
+
+Version 1 computes spheres, planes, up to four point lights, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention. See the [credits and limitations](public/notices/credits.html) page and the provenance notes below.
+
 ## Provenance and limitations
 
 Inspired by [Light Teachings by Kia Preston (pkncoder)](https://github.com/pkncoder/Light-Teachings/tree/57260fe2a6badbc826271856bbcf6c8a2090de17). AI 3 did not copy or adapt upstream source; this implementation follows the supplied mathematical contract. Incoming adaptations must preserve the full upstream MIT text and identify source commits/functions. See [contribution record](docs/contributions.md) and [public credits](public/notices/credits.html).

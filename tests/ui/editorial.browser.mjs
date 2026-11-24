@@ -55,6 +55,13 @@ const ready = (page, version) => page.waitForFunction(v => {
   return document.querySelector('[role=status]')?.textContent.startsWith('ready:') && Number(c?.dataset.sceneVersion) >= v;
 }, version, { timeout: 15000 });
 const version = page => page.locator('.canvas-host > canvas').evaluate(c => Number(c.dataset.sceneVersion));
+/** Chapter 3 starts as the simplified result; "Explain more" shows every step. */
+async function expandMath(page) {
+  const more = page.locator('.math-more');
+  await more.waitFor();
+  if (await more.getAttribute('aria-expanded') !== 'true') await more.click();
+  await page.waitForFunction(() => document.querySelector('.math-more')?.getAttribute('aria-expanded') === 'true');
+}
 
 test('integration hooks other owners rely on are intact', async () => {
   const { page, context, errors } = await open();
@@ -74,26 +81,57 @@ test('integration hooks other owners rely on are intact', async () => {
   await context.close();
 });
 
-test('document structure: numbered chapters, index with scroll-spy, numbered figures and equations', async () => {
+test('document structure: three chapters, index with scroll-spy, numbered figures and equations', async () => {
   const { page, context } = await open();
   await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.eq-no').length > 0);
+  // Collapsed: only the simplified result, with no step numbers.
+  await page.waitForFunction(() => document.querySelectorAll('.math-step').length === 1);
+  const collapsed = await page.evaluate(() => ({
+    title: document.querySelector('.math-step h3')?.textContent,
+    visibleNumbers: [...document.querySelectorAll('.math-step .eq-no')].filter(e => e.offsetParent !== null).length,
+  }));
+  assert.equal(collapsed.title, 'Simplified result');
+  assert.equal(collapsed.visibleNumbers, 0);
+  await expandMath(page);
+  await page.waitForFunction(() => document.querySelectorAll('.math-step').length > 1);
   const s = await page.evaluate(() => ({
     chapters: [...document.querySelectorAll('.chapter > h2')].map(h => h.textContent),
     toc: [...document.querySelectorAll('.toc a')].map(a => a.getAttribute('href')),
     figures: [...document.querySelectorAll('figcaption .figure-label, .math-fig figcaption b')].map(b => b.textContent.trim()),
     equations: [...document.querySelectorAll('.eq-no')].map(e => e.textContent),
-    checks: [...document.querySelectorAll('.math-check')].map(c => c.className),
+    removed: document.querySelectorAll('.math-check, .blk-assume, .impl-link, #ch-4, #ch-5').length,
+    lastTitle: [...document.querySelectorAll('.math-step h3')].at(-1)?.textContent,
   }));
-  assert.deepEqual(s.chapters, ['1The picture', '2Follow one pixel', '3The mathematics', '4Implementation', '5Limits and credits']);
-  assert.deepEqual(s.toc, ['#ch-1', '#ch-2', '#ch-3', '#ch-4', '#ch-5']);
+  assert.deepEqual(s.chapters, ['1The picture', '2Follow one pixel', '3The mathematics']);
+  assert.deepEqual(s.toc, ['#ch-1', '#ch-2', '#ch-3']);
   assert.ok(s.figures.includes('Figure 1.1.') && s.figures.includes('Figure 2.1.') && s.figures.includes('Figure 3.1.'), s.figures.join(' '));
   assert.equal(s.equations[0], '(3.1)');
   assert.ok(s.equations.every((e, i) => e === `(3.${i + 1})`), 'equations are numbered consecutively');
-  assert.ok(s.checks.length > 0 && s.checks.every(c => !c.includes('bad')), 'every recomputation matches the tracer');
+  assert.equal(s.removed, 0, 'no checks, assumption lists, implementation links or chapters 4 and 5');
+  assert.match(s.lastTitle, /^3\.\d+From light to a screen color$/, 'expanded, the simplified result is the last numbered step');
   await page.locator('.toc a[href="#ch-3"]').click();
   await page.waitForTimeout(200);
   assert.equal(await page.evaluate(() => document.querySelector('.toc a[aria-current="true"]')?.getAttribute('href')), '#ch-3');
+  await context.close();
+});
+
+test('the pixel answer is one short paragraph, and the steps open with Explain more', async () => {
+  const { page, context } = await open();
+  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await page.waitForFunction(() => document.querySelector('.explain .summary')?.textContent.startsWith('Pixel ('));
+  const before = await page.evaluate(() => ({
+    answer: document.querySelector('.explain .summary').textContent,
+    stepsHidden: document.querySelector('.events').hidden,
+    button: document.querySelector('.explain-more')?.textContent,
+    afterFigure: document.querySelector('.schematic')?.nextElementSibling?.classList.contains('explain-more'),
+  }));
+  assert.ok(before.answer.split(/\s+/).length < 50, before.answer);
+  assert.equal(before.stepsHidden, true);
+  assert.equal(before.button, 'Explain more');
+  assert.equal(before.afterFigure, true, 'the button sits right after Figure 2.1');
+  await page.locator('.explain-more').click();
+  assert.equal(await page.evaluate(() => document.querySelector('.events').hidden), false);
+  assert.ok(await page.locator('.events li').count() > 0);
   await context.close();
 });
 
@@ -111,6 +149,7 @@ test('numeric pixel selector inspects the typed pixel', async () => {
 test('Figure 3.1: drag the pixel in the image-space grid, or step it with the arrow keys', async () => {
   const { page, context, errors } = await open();
   await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await expandMath(page);
   const grid = page.locator('[data-drag="pixel-grid"]');
   await grid.waitFor();
   await grid.scrollIntoViewIfNeeded();
@@ -178,6 +217,7 @@ test('Figure 2.1: drag the colored object and the light; keyboard steps them', a
 test('linked highlighting: an equation term and its figure element light up together', async () => {
   const { page, context } = await open();
   await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await expandMath(page);
   await page.waitForFunction(() => document.querySelectorAll('.math-step [data-ref="delta"]').length >= 2);
   const section = page.locator('.math-step', { has: page.locator('svg [data-ref="delta"]') }).first();
   // A visible term: the one in the derivation is inside a collapsed <details>.
@@ -195,31 +235,11 @@ test('linked highlighting: an equation term and its figure element light up toge
   await context.close();
 });
 
-test('chapter 4 shows the real CPU and GPU source, linked from chapter 3, without a second <pre>', async () => {
-  const { page, context, errors } = await open();
-  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
-  await page.waitForFunction(() => document.querySelectorAll('.impl-link a').length > 0);
-  const r = await page.evaluate(() => ({
-    listings: [...document.querySelectorAll('code.listing')].map(c => c.textContent),
-    pres: document.querySelectorAll('pre').length,
-    links: [...document.querySelectorAll('.impl-link a')].map(a => a.getAttribute('href')),
-    targets: [...document.querySelectorAll('.source-step')].map(s => s.id),
-  }));
-  assert.equal(r.listings.length, 8, 'four operations, CPU and GPU each');
-  assert.ok(r.listings.every(t => !t.includes('not found in')), 'every named function was extracted from the real source');
-  assert.ok(r.listings.some(t => t.includes('export function nearestHit(scene: Scene')), 'the CPU listing is the tracer source');
-  assert.ok(r.listings.some(t => /Hit intersectSphere\(vec3 origin/.test(t)), 'the GPU listing is the compiled GLSL');
-  assert.equal(r.pres, 1, 'listings use <code class="listing">, never <pre>');
-  assert.ok(r.links.length >= 4 && r.links.every(h => r.targets.includes(h.slice(1))), 'every implementation link has a target');
-  assert.deepEqual(errors, []);
-  await context.close();
-});
-
 test('the typeset shading law and its numbers divide by π, as the contract and both tracers do', async () => {
-  // The panel's ✓ compares its model with the tracer, never the typeset equation, so a
-  // missing 1/π in the printed law went unnoticed. Check the rendered text itself.
+  // A missing 1/π in the printed law once went unnoticed. Check the rendered text itself.
   const { page, context, errors } = await open();
   await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await expandMath(page);
   const section = page.locator('.math-step', { has: page.locator('h3', { hasText: 'Is the light visible?' }) }).first();
   await section.waitFor();
   const text = await section.evaluate(s => ({

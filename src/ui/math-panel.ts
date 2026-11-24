@@ -11,17 +11,14 @@ import { planeDigits, rootDigits, sphereDigits } from './precision.ts';
  * Chapter 3, "The mathematics": one section per computation, each following the
  * same editorial sequence (docs/design/editorial-ui-brief.md §5.6):
  *
- *   purpose · figure · caption · Law (numbered) · Assumptions · Derivation ▸ ·
- *   With this pixel's numbers · Result and interpretation · Check
+ *   purpose (with its assumptions) · figure · caption · Law (numbered) ·
+ *   Derivation ▸ · With this pixel's numbers · Result and interpretation
  *
  * Every number comes from math-model.ts (read from the published inspection or
  * recomputed from the same scene). Every symbol, in equations and in sentences,
  * is MathML. Elements are created fresh for each use: a DOM node can live in one
  * place only, so reusing one would silently move it out of an earlier equation.
  */
-
-/** Tolerance for "the recomputed value matches the tracer" (floating-point). */
-export const MATCH_TOLERANCE = 1e-9;
 
 // --- notation (each call returns NEW elements) ---------------------------------
 
@@ -84,13 +81,11 @@ const para = (className: string, ...parts: Prose): HTMLParagraphElement => eleme
 
 type Block =
   | { kind: 'law'; equations: Array<[string, Element]> }          // [accessible name, math row]
-  | { kind: 'assume'; items: Prose[] }
   | { kind: 'derive'; steps: DerivationRow[]; note?: Prose }
   | { kind: 'numbers'; equations: Element[] }
-  | { kind: 'result'; text: Prose; interpretation: Prose }
-  | { kind: 'check'; error: number | null; what: Prose };
+  | { kind: 'result'; text: Prose; interpretation: Prose };
 
-type SectionParts = { title: string; purpose: Prose; figure?: SVGSVGElement; caption?: Prose; blocks: Block[]; source?: string };
+type SectionParts = { title: string; purpose: Prose; figure?: SVGSVGElement; caption?: Prose; blocks: Block[] };
 
 /**
  * Which derivations the reader has opened, per chapter container and section
@@ -132,12 +127,6 @@ class Chapter {
       const node = this.block(block);
       if (node) box.append(node);
     }
-    if (parts.source) {
-      // Every computation links to the code that performs it (chapter 4).
-      const link = element('a', null, `Implementation: §${parts.source.replace('listing-', '').replace('-', '.')} ↓`);
-      link.href = `#${parts.source}`;
-      box.append(element('p', 'impl-link', link));
-    }
     this.nodes.push(box);
   }
 
@@ -147,13 +136,6 @@ class Chapter {
       case 'law': {
         const div = element('div', 'blk blk-law', label('Law'));
         for (const [name, content] of b.equations) div.append(this.numbered(name, content));
-        return div;
-      }
-      case 'assume': {
-        const div = element('div', 'blk blk-assume', label('Assumptions'));
-        const list = element('ul', null);
-        for (const item of b.items) list.append(element('li', null, ...item));
-        div.append(list);
         return div;
       }
       case 'derive': {
@@ -180,14 +162,6 @@ class Chapter {
         div.append(para('result-text', ...b.text), para('math-note interpretation', ...b.interpretation));
         return div;
       }
-      case 'check': {
-        if (b.error === null || !Number.isFinite(b.error)) return null;
-        const ok = b.error < MATCH_TOLERANCE;
-        return para(ok ? 'math-check' : 'math-check math-check-bad',
-          ok ? '✓ Verified: matches the tracer’s ' : 'Mismatch: the tracer’s ', ...b.what,
-          ok ? ' within ' : ' differs by ', ok ? X(tenTo(-9)) : X(sci(b.error)),
-          ok ? ' (largest difference ' : ' (tolerance ', ok ? X(b.error === 0 ? mn('0') : sci(b.error)) : X(tenTo(-9)), ').');
-      }
     }
   }
 }
@@ -208,19 +182,14 @@ function pixelSection(ch: Chapter, story: MathStory): void {
   const ndcY = (): Element => row(mn('1'), minus(), frac(row(mn('2'), paren(row(mi('y'), plus(), half()))), mi('H')));
   const across = dot(p.direction, b.right), upward = dot(p.direction, b.up);
   ch.add({
-    source: 'listing-4-1',
     title: 'From a pixel to a ray',
-    purpose: ['Each pixel defines one ray. Its center is carried onto a sensor one unit in front of the camera ', V('O'), '; the unit direction ', V('D'), ' through that point is the ray we follow.'],
+    purpose: ['Each pixel defines one ray. Its center is carried onto a sensor one unit in front of the camera ', V('O'), '; the unit direction ', V('D'), ' through that point is the ray we follow. Pixels are square, so the horizontal coordinate is stretched by the aspect ratio ', X(mi('W'), mo('/'), mi('H')), ', and the camera frame ', V('r'), ', ', V('u'), ', ', V('f'), ' is orthonormal.'],
     figure: pixelToRayFigure(p),
     caption: ['Image space (left) and camera space (right). The red arc carries the pixel center onto the sensor; the red line is the camera ray. The sensor’s half-height is ', S('k'), ' and its half-width ', X(paren(row(mi('W'), mo('/', { lspace: '0', rspace: '0' }), mi('H'))), mi('k')), '.'],
     blocks: [
       { kind: 'law', equations: [
         ['screen coordinates', row(s('s', 'x'), eq(), row(paren(ndcX()), cdot(), frac(mi('W'), mi('H'))), comma(), space(1.4), s('s', 'y'), eq(), ndcY())],
         ['ray direction', row(ref('D', v('D')), eq(), frac(sum(), norm(sum())), comma(), space(1.4), ref('k', mi('k')), eq(), fn('tan', frac(sub(mi('\u03b8'), mu('fov')), mn('2'))))],
-      ] },
-      { kind: 'assume', items: [
-        ['Pixels are square, so the horizontal coordinate is stretched by the aspect ratio ', X(mi('W'), mo('/'), mi('H')), '.'],
-        ['The camera frame ', V('r'), ', ', V('u'), ', ', V('f'), ' is orthonormal; the camera never looks straight up or down.'],
       ] },
       { kind: 'derive', steps: aligned([
         [mtext('pixel center'), mo('='), paren(row(mi('x'), plus(), half(), comma(), mi('y'), plus(), half()))],
@@ -242,13 +211,16 @@ function pixelSection(ch: Chapter, story: MathStory): void {
       { kind: 'result', text: [V('D'), ' = ', X(tuple(p.direction, 4)), ', leaving ', V('O'), ' = ', X(tuple(b.origin)), '.'],
         interpretation: ['The ray points ', side(across, 'left of', 'right of', 'neither left nor right of'), ' and ', side(upward, 'below', 'above', 'level with'),
           ' the view axis, ', X(degrees(deg(dot(p.direction, b.forward)))), ' away from it.'] },
-      { kind: 'check', error: p.directionError, what: ['ray direction ', V('D')] },
     ],
   });
 }
 
 function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
   const blocks: Block[] = [];
+  // What each solve takes for granted, said once in the lead paragraph.
+  const given: Prose = hit.sphere
+    ? [' Because ', V('D'), ' has unit length, the quadratic below starts with ', X(sq(mi('t'))), ', and only hits with ', X(mi('t'), mo('>'), eps()), ', in front of the ray’s origin, count.']
+    : hit.plane ? [' The plane is given by a point ', V('P', '0'), ' on it and its unit normal ', V('n'), '.'] : [];
   if (hit.sphere) {
     const sp = hit.sphere;
     const near = sp.root === 'near';
@@ -258,10 +230,6 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
     const oc = (): Element => paren(row(v('O'), minus(), v('C')));
     blocks.push(
       { kind: 'law', equations: [['ray meets sphere', row(sq(norm(row(v('O'), plus(), mi('t'), ref('D', v('D')), minus(), ref('C', v('C'))))), eq(), sq(ref('radius', mi('R'))))]] },
-      { kind: 'assume', items: [
-        [V('D'), ' is a unit vector, ', X(dotted(v('D'), v('D')), eq(), mn('1')), ', so the quadratic’s leading coefficient is 1.'],
-        ['Only hits with ', X(mi('t'), mo('>'), eps()), ' count: they lie in front of the ray’s origin.'],
-      ] },
       { kind: 'derive', steps: aligned([
         [sq(norm(row(oc(), plus(), mi('t'), v('D')))), mo('='), sq(mi('R'))],
         [row(sq(mi('t')), paren(dotted(v('D'), v('D'))), plus(), mn('2'), mi('t'), paren(dotted(v('D'), oc())), plus(), sq(norm(oc())), minus(), sq(mi('R'))), mo('='), mn('0')],
@@ -285,7 +253,6 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
     const shown = planeDigits(pl, hit.t);
     blocks.push(
       { kind: 'law', equations: [['ray meets plane', row(dotted(v('n'), paren(row(v('O'), plus(), mi('t'), v('D'), minus(), sub(v('P'), mn('0'))))), eq(), mn('0'))]] },
-      { kind: 'assume', items: [[V('n'), ' is a unit normal and ', V('P', '0'), ' any point of the plane.']] },
       { kind: 'derive', steps: aligned([
         [row(dotted(v('n'), v('O')), plus(), mi('t'), paren(dotted(v('n'), v('D'))), minus(), dotted(v('n'), sub(v('P'), mn('0')))), mo('='), mn('0')],
         [mi('t'), mo('='), frac(dotted(v('n'), paren(row(sub(v('P'), mn('0')), minus(), v('O')))), dotted(v('n'), v('D')))],
@@ -298,13 +265,11 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
         interpretation: [X(dotted(v('D'), v('n')), eq(), num(pl.denominator, shown.digits), mo('<'), mn('0')), ': the ray travels against the normal, so it arrives at the front of the surface.'] },
     );
   }
-  blocks.push({ kind: 'check', error: hit.tError, what: ['distance ', S('t')] });
   ch.add({
-    source: 'listing-4-2',
     title: afterBounce ? `The bounced ray meets the ${hit.name}` : `The ray meets the ${hit.name}`,
     purpose: afterBounce
-      ? ['The same nearest-surface search runs again from the bounce point, along ', V('R'), '. Here ', V('O'), ' is the bounce point and ', V('D'), ' is ', V('R'), '.']
-      : ['Every surface is tested; the nearest hit in front of the camera decides what this pixel sees.'],
+      ? ['The same nearest-surface search runs again from the bounce point, along ', V('R'), '. Here ', V('O'), ' is the bounce point and ', V('D'), ' is ', V('R'), '.', ...given]
+      : ['Every surface is tested; the nearest hit in front of the camera decides what this pixel sees.', ...given],
     figure: intersectionFigure(hit),
     caption: hit.sphere
       ? ['The dashed perpendicular from ', V('C'), ' lands at ', X(mi('t'), eq(), neg(mi('h'))), '; the hit lies ', X(sqrt(mi('\u0394'))), ' before it. The distance from ', V('O'), ' is not to scale; the half-chord ', X(sqrt(mi('\u0394'))), ' is.']
@@ -317,14 +282,12 @@ function reflectSection(ch: Chapter, r: ReflectStep): void {
   const perpPart = (): Element => row(paren(dotted(v('D'), v('N'))), v('N'));
   const turn = deg(dot(r.incoming, r.outgoing));
   ch.add({
-    source: 'listing-4-3',
     title: 'The mirror bounce',
-    purpose: ['A perfect mirror keeps the part of ', V('D'), ' along the surface and reverses the part along the normal ', V('N'), '. The color comes from wherever the bounced ray ', V('R'), ' goes next.'],
+    purpose: ['A perfect, untinted mirror keeps the part of ', V('D'), ' along the surface and reverses the part along the normal ', V('N'), ', which faces the incoming ray (', X(dotted(v('D'), v('N')), mo('<'), mn('0')), '). The color comes from wherever the bounced ray ', V('R'), ' goes next.'],
     figure: reflectionFigure(r),
     caption: ['Bounce at ', V('P'), ': incoming ', V('D'), ', normal ', V('N'), ', outgoing ', V('R'), '. Angles are drawn at their computed size.'],
     blocks: [
       { kind: 'law', equations: [['law of reflection', row(ref('R', v('R')), eq(), row(ref('D', v('D')), minus(), mn('2'), paren(dotted(ref('D', v('D')), ref('N', v('N')))), ref('N', v('N'))))]] },
-      { kind: 'assume', items: [['The mirror is perfect and untinted: all light is reflected, in one direction.'], [V('N'), ' is the unit normal facing the incoming ray, so ', X(dotted(v('D'), v('N')), mo('<'), mn('0')), '.']] },
       { kind: 'derive', steps: aligned([
         [v('D'), mo('='), row(sub(v('D'), mo('\u2225')), plus(), sub(v('D'), mo('\u22a5'))), ],
         [sub(v('D'), mo('\u22a5')), mo('='), perpPart()],
@@ -339,7 +302,6 @@ function reflectSection(ch: Chapter, r: ReflectStep): void {
       ] },
       { kind: 'result', text: [V('R'), ' = ', X(tuple(r.outgoing, 4)), ', with ', X(theta('i'), eq(), theta('r'), eq(), degrees(r.thetaI)), '.'],
         interpretation: ['The ray is turned through ', X(degrees(turn)), ' = ', X(mn('180'), mo('\u00b0', { lspace: '0' }), minus(), mn('2'), theta('i')), '. The tiny step ', S('\u03b5'), ' off the surface keeps the new ray from hitting the mirror it just left.'] },
-      { kind: 'check', error: r.outgoingError, what: ['outgoing direction ', V('R')] },
     ],
   });
 }
@@ -351,9 +313,14 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
       'Only the ambient term ', X(mi('a'), v('\u03c1')), ' remains, which is why this point is dark.']
     : ['The light arrives ', X(degrees(sh.phiDeg)), ' from the normal, so it contributes ', X(fn('cos', mi('\u03c6')), eq(), num(sh.nDotL, 3)), ' of its full strength, divided by ', X(sq(mi('d')), eq(), num(sh.distanceSquared, 2)), '.'];
   ch.add({
-    source: 'listing-4-3',
     title: `Is the light visible? Shading the ${sh.surface.name}`,
-    purpose: ['A shadow ray goes from the surface toward the single point light. If anything blocks it, only the small ambient term remains.'],
+    purpose: [
+      sh.extraLights.length > 0
+        ? `A shadow ray goes from the surface toward each of the ${sh.extraLights.length + 1} point lights; the law shows the main light, and the others add their own terms the same way. `
+        : 'A shadow ray goes from the surface toward the point light. ',
+      'A blocked light adds nothing (', X(mi('V'), eq(), mn('0')), ', so shadows are hard), leaving only the ambient term ', X(mi('a'), v('\u03c1')),
+      ', which stands in for light bouncing between surfaces. The surface is matte: it reflects ', X(v('\u03c1'), slash(), mi('\u03c0')),
+      ' of the arriving light in every direction. ', X(hadamard()), ' multiplies colors channel by channel, and ', X(sq(mi('d'))), ' is clamped at 0.01 to avoid dividing by zero.'],
     figure: shadingFigure(sh),
     caption: sh.rawNDotL <= 0
       ? ['The ', sh.surface.name, ' faces away from the light: ', X(dotted(v('N'), v('L')), mo('<'), mn('0')), ', so ', V('L'), ' points into the surface and the direct term is zero.']
@@ -362,12 +329,6 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
       { kind: 'law', equations: [['shading', row(v('c'), eq(), row(mi('a'), v('\u03c1'), plus(), mi('V'), space(0.2),
         frac(row(paren(row(v('\u03c1'), hadamard(), vs('c', 'L'))), mi('I'), space(0.2), fn('max', row(ref('phi', dotted(ref('N', v('N')), ref('L', v('L')))), comma(), mn('0')))),
           row(mi('\u03c0'), mo('\u2062'), space(0.2), fn('max', row(sq(ref('d', mi('d'))), comma(), mn('0.01')))))))]] },
-      { kind: 'assume', items: [
-        [sh.extraLights.length > 0 ? `${sh.extraLights.length + 1} point lights, each checked for its own shadow and added up (the law shows the main light): shadows are hard, so ` : 'One point light: shadows are hard, so ', X(mi('V'), mo('\u2208'), row(fence('{'), mn('0'), comma(), mn('1'), fence('}'))), '.'],
-        ['The surface is Lambertian (ideally matte): it reflects ', X(v('\u03c1'), slash(), mi('\u03c0')), ' of the arriving light in every direction.'],
-        ['The constant ambient term ', X(mi('a'), v('\u03c1')), ' stands in for light bouncing between surfaces, which is not computed.'],
-        [X(hadamard()), ' multiplies colors channel by channel; ', X(sq(mi('d')), mo('<'), mn('0.01')), ' is clamped to avoid dividing by zero.'],
-      ] },
       { kind: 'derive', steps: aligned([
         [v('L'), mo('='), frac(toLight(), mi('d')), ],
         [mi('E'), mo('='), frac(row(mi('I'), space(0.2), fn('max', row(dotted(v('N'), v('L')), comma(), mn('0')))), sq(mi('d')))],
@@ -391,7 +352,6 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
       { kind: 'result', text: ['Linear color ', V('c'), ' = ', X(tuple(sh.color, 4)), ', with ', X(mi('V'), eq(), mn(String(sh.visibility))),
         ...(sh.blocked ? [' (blocked', ...(sh.blockerT !== null ? [' at ', X(mi('t'), eq(), num(sh.blockerT))] : []), ').'] : [' (light visible).'])],
         interpretation },
-      { kind: 'check', error: sh.colorError, what: ['linear color ', V('c')] },
     ],
   });
 }
@@ -408,7 +368,6 @@ function endSection(ch: Chapter, story: MathStory): void {
           s('t', 's'), eq(), fn('clamp', row(half(), paren(row(s('D', 'y'), plus(), mn('1'))), comma(), mn('0'), comma(), mn('1'))))]] },
         { kind: 'numbers', equations: [math('sky numbers', s('t', 's'), eq(), num(end.ts, 4), comma(), space(1), v('c'), eq(), tuple(end.color, 4))] },
         { kind: 'result', text: [V('c'), ' = ', X(tuple(end.color, 4)), '.'], interpretation: ['The ray points ', end.direction[1] > 0 ? 'upward' : 'downward', ', so the color lies ', X(num(end.ts * 100, 0)), '% of the way from the horizon color to the zenith color.'] },
-        { kind: 'check', error: err, what: ['sky color ', V('c')] },
       ],
     });
   } else if (end.reason === 'budget') {
@@ -449,16 +408,14 @@ function displaySection(ch: Chapter, story: MathStory): void {
   if (d.mode === 'beauty') numbers.push(math('tone mapped', prime(v('c')), eq(), tuple(d.toneMapped!, 4)));
   numbers.push(math('encoded', prime(v('c'), d.mode === 'hit' ? '' : '\u2033'), eq(), tuple(d.encoded, 4)));
   ch.add({
-    source: 'listing-4-4',
     title: 'From light to a screen color',
     purpose: d.mode === 'beauty'
-      ? ['Light values can exceed 1, so each channel is compressed, encoded for the screen, then rounded to an 8-bit number.']
+      ? ['Lighting is computed in linear color, where values can exceed 1, and converted once, at the end: each channel is compressed into ', X(row(fence('['), mn('0'), comma(), mn('1'), fence(')'))), ' by Reinhard’s curve, encoded for the screen, then rounded to an 8-bit number.']
       : d.mode === 'albedo' ? ['The surface color is encoded for the screen (sRGB) without tone mapping.'] : ['The hit view shows pure white or black, with no conversion.'],
     figure: displayFigure(d),
     caption: ['Display curve with this pixel’s red, green and blue values marked, and the resulting color. The equations apply to each channel ', S('c'), ' separately.'],
     blocks: [
       { kind: 'law', equations: law },
-      { kind: 'assume', items: [['Lighting is computed in linear color and converted exactly once, at the end.'], ['Reinhard’s curve maps every brightness in ', X(row(fence('['), mn('0'), comma(), mi('\u221e'), fence(')'))), ' into ', X(row(fence('['), mn('0'), comma(), mn('1'), fence(')'))), '.']] },
       { kind: 'numbers', equations: numbers },
       { kind: 'result', text: [X(paren(row(mi('R'), comma(), mi('G'), comma(), mi('B'))), eq(), paren(row(mn(String(d.bytes[0])), comma(), mn(String(d.bytes[1])), comma(), mn(String(d.bytes[2]))))), '.'],
         interpretation: ['This is the color of the pixel in Figure 1.1.'] },
@@ -535,6 +492,9 @@ function enablePixelDrag(container: HTMLElement, interact: MathInteraction): voi
   });
 }
 
+/** Whether the reader has asked to see every step of chapter 3 ("Explain more"). */
+const expandedMath = new WeakMap<HTMLElement, boolean>();
+
 /** Latest view waiting to be drawn while a surrounding <details> is closed. */
 const pending = new WeakMap<HTMLElement, ViewState | null>();
 const scheduled = new WeakMap<HTMLElement, number>();
@@ -575,8 +535,9 @@ export function renderMathPanel(container: HTMLElement, view: ViewState | null, 
 function draw(container: HTMLElement, view: ViewState | null): void {
   const result = buildMathStory(view);
   const inspection = view?.inspection;
+  const expanded = expandedMath.get(container) ?? false;
   const key = result.kind === 'story'
-    ? `${result.story.sceneVersion}:${inspection!.pixel.x},${inspection!.pixel.y}:${result.story.mode}:${result.story.maxRedirects}`
+    ? `${result.story.sceneVersion}:${inspection!.pixel.x},${inspection!.pixel.y}:${result.story.mode}:${result.story.maxRedirects}:${expanded}`
     : result.kind;
   if (container.dataset.mathKey === key && container.firstChild) return;
   container.dataset.mathKey = key;
@@ -591,9 +552,6 @@ function draw(container: HTMLElement, view: ViewState | null): void {
   }
 
   const story = result.story;
-  paper.append(para('math-legend',
-    `Pixel (${story.pixel.x}, ${story.pixel.y}), picture version ${story.sceneVersion}. Bold letters such as `, V('D'), ' and ', V('N'),
-    ' are vectors; italic letters such as ', S('t'), ' and ', S('d'), ' are numbers; ', X(dotted(v('A'), v('B'))), ' is the dot product and ', X(norm(v('v'))), ' a length.'));
 
   let opened = openDerivations.get(container);
   if (!opened) { opened = new Set(); openDerivations.set(container, opened); }
@@ -608,7 +566,27 @@ function draw(container: HTMLElement, view: ViewState | null): void {
   if (story.shade) shadeSection(ch, story.shade);
   endSection(ch, story);
   displaySection(ch, story);
-  paper.append(...ch.nodes);
+  // Collapsed, the chapter shows only its last step, the pixel's final color, as
+  // the "Simplified result". "Explain more" reveals every step, numbered.
+  const more = element('button', 'button button-secondary math-more', expanded ? 'Show less' : 'Explain more');
+  more.type = 'button';
+  more.setAttribute('aria-expanded', String(expanded));
+  more.addEventListener('click', () => {
+    expandedMath.set(container, !expanded);
+    draw(container, latestView.get(container) ?? null);
+    container.querySelector<HTMLButtonElement>('.math-more')?.focus({ preventScroll: true });
+  });
+  if (expanded) {
+    paper.append(para('math-legend',
+      `Pixel (${story.pixel.x}, ${story.pixel.y}). Bold letters such as `, V('D'), ' and ', V('N'),
+      ' are vectors; italic letters such as ', S('t'), ' and ', S('d'), ' are numbers; ', X(dotted(v('A'), v('B'))), ' is the dot product and ', X(norm(v('v'))), ' a length.'));
+    paper.append(...ch.nodes, more);
+  } else {
+    const last = ch.nodes[ch.nodes.length - 1];
+    last.classList.add('math-simple');
+    last.querySelector('h3')?.replaceChildren('Simplified result');
+    paper.append(last, more);
+  }
   const keepFocus = document.activeElement instanceof Element && container.contains(document.activeElement)
     ? document.activeElement.getAttribute('data-drag') : null;
   container.replaceChildren(paper);
