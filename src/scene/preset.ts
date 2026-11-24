@@ -6,7 +6,7 @@ import type { Controls, LightControl, Scene, Vec3 } from '../contracts.ts';
 export const CONTROL_RANGES = {
   targetX: { min: -2.8, max: -1.6, step: 0.05 },
   lightX: { min: -4, max: 4, step: 0.1 },
-  cameraYawDeg: { min: -15, max: 15, step: 1 },
+  cameraYawDeg: { min: -40, max: 40, step: 1 },
   // Height and depth keep every light above both spheres and in front of the back wall.
   lightY: { min: 2.2, max: 7, step: 0.1 },
   lightZ: { min: -4, max: 4.5, step: 0.1 },

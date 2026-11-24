@@ -84,7 +84,7 @@ test('snapshots cannot mutate the store and subscribers can unsubscribe', () => 
 
 test('control extrema and intermediate positions keep spheres separate and camera outside geometry', () => {
   for (let targetX = CONTROL_RANGES.targetX.min; targetX <= CONTROL_RANGES.targetX.max; targetX += 0.05) {
-    for (const cameraYawDeg of [-15, 0, 15]) {
+    for (const cameraYawDeg of [CONTROL_RANGES.cameraYawDeg.min, -15, 0, 15, CONTROL_RANGES.cameraYawDeg.max]) {
       const s = createPreset({ ...initialControls(), targetX, cameraYawDeg });
       const spheres = s.objects.filter(object => object.kind === 'sphere');
       const [a, b] = spheres;

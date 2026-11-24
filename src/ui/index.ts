@@ -294,7 +294,11 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     stepsButton.textContent = stepsOpen ? 'Show less' : 'Explain more';
     stepsButton.setAttribute('aria-expanded', String(stepsOpen));
   };
-  stepsButton.addEventListener('click', () => { stepsOpen = !stepsOpen; syncSteps(); }, { signal });
+  stepsButton.addEventListener('click', () => {
+    stepsOpen = !stepsOpen;
+    syncSteps();
+    if (stepsOpen) restartAnimation(events, 'is-opening');
+  }, { signal });
   const math = document.createElement('div');
   math.className = 'math';
   const mathBody = document.createElement('div');
@@ -346,11 +350,44 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   shell.append(header, toc.nav, doc, record);
   root.replaceChildren(shell);
 
-  // Figure 2.1's handles move the real objects, through the same snapping as the sliders.
-  const diagram = createDiagram(diagramHost, (kind, x) => {
-    if (kind === 'target') commitNumber(x, CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
-    else commitNumber(x, CONTROL_RANGES.lightX, current?.controls.lightX, snapped => actions.dispatch({ type: 'light-x', value: snapped }));
+  // Figure 2.1's handles move the real objects, through the same snapping and
+  // ranges as the sliders, so the picture, the answer and the math follow.
+  const clampTo = (value: number, range: { min: number; max: number }) => Math.min(range.max, Math.max(range.min, value));
+  const lightRange = { x: CONTROL_RANGES.lightX, y: CONTROL_RANGES.lightY, z: CONTROL_RANGES.lightZ } as const;
+  const diagram = createDiagram(diagramHost, {
+    moveTarget(x) {
+      commitNumber(clampTo(x, CONTROL_RANGES.targetX), CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
+    },
+    moveCamera(yaw) {
+      commitNumber(clampTo(yaw, CONTROL_RANGES.cameraYawDeg), CONTROL_RANGES.cameraYawDeg, current?.controls.cameraYawDeg, snapped => actions.dispatch({ type: 'camera-yaw', value: snapped }));
+    },
+    moveLight(index, axis, value) {
+      if (!current || index > current.controls.extraLights.length) return;
+      const range = lightRange[axis];
+      commitNumber(clampTo(value, range), range, lightValues(current, index)[axis], snapped => actions.dispatch({ type: 'light-move', index, axis, value: snapped }));
+    },
+    pickPicture(u, v) {
+      selection = { u, v };
+      placeMarker();
+      actions.inspectAt(u, v);
+    },
   });
+  const replay = document.createElement('button');
+  replay.type = 'button';
+  replay.className = 'button button-secondary replay-path';
+  replay.textContent = 'Replay the path';
+  // Visibility, not display: showing or hiding it must not shift the page under a drag.
+  replay.style.visibility = 'hidden';
+  replay.addEventListener('click', () => diagram.replay(), { signal });
+  const figureTools = document.createElement('div');
+  figureTools.className = 'figure-tools';
+  const figureHint = document.createElement('p');
+  figureHint.className = 'figure-hint';
+  figureHint.textContent = 'Drag the camera, a light or the colored object. Click a surface to follow its pixel. Drag empty space to turn the view; double-click to reset it.';
+  figureTools.append(replay, figureHint);
+  figure.append(figureTools);
+  // The path plays when a new pixel is chosen, not when the same pixel is recomputed.
+  let shownPixel = '';
 
   function placeMarker(): void {
     if (!selection) {
@@ -386,6 +423,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     actions.inspectAt(next.u, next.v);
   }, { signal });
   example.addEventListener('click', () => actions.inspectExample(), { signal });
+  const bufferAspect = (): number => { const size = bufferSize(); return size.width / size.height; };
   const bufferSize = (): { width: number; height: number } => {
     const image = canvasHost.querySelector('canvas');
     return image && image.width > 0 && image.height > 0 ? { width: image.width, height: image.height } : pixelSize;
@@ -433,7 +471,10 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       const explanation = buildExplanation(view);
       explain.dataset.stale = explanation.stale ? 'true' : 'false';
       explainTitle.textContent = explanation.heading;
-      answer.textContent = explanation.answer;
+      if (answer.textContent !== explanation.answer) {
+        answer.textContent = explanation.answer;
+        if (matching) restartAnimation(answer, 'is-new');
+      }
       events.replaceChildren(...explanation.items.map(item => {
         const li = document.createElement('li');
         li.dataset.kind = item.kind;
@@ -452,8 +493,20 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       renderMathPanel(mathBody, view, {
         inspectAt(u, v) { selection = { u, v }; placeMarker(); actions.inspectAt(u, v); },
       });
-      diagram.show(explanation.diagram, explanation.summary, view.scene,
-        { targetX: view.controls.targetX, lightX: view.controls.lightX, ranges: { targetX: CONTROL_RANGES.targetX, lightX: CONTROL_RANGES.lightX } });
+      const pixelKey = matching ? `${matching.pixel.x},${matching.pixel.y}` : '';
+      const animate = pixelKey !== '' && pixelKey !== shownPixel;
+      if (pixelKey) shownPixel = pixelKey;
+      if (animate) restartAnimation(marker, 'is-new');
+      replay.style.visibility = !explanation.diagram || prefersReducedMotion() ? 'hidden' : 'visible';
+      diagram.show(explanation.diagram, explanation.summary, view.scene, {
+        target: { x: view.controls.targetX, range: CONTROL_RANGES.targetX },
+        camera: { yawDeg: view.controls.cameraYawDeg, range: CONTROL_RANGES.cameraYawDeg },
+        lights: [0, ...view.controls.extraLights.map((_, i) => i + 1)].map(i => {
+          const l = lightValues(view, i);
+          return { x: l.x, y: l.y, z: l.z };
+        }),
+        lightRanges: lightRange,
+      }, { animate, aspect: matching ? matching.pixel.width / matching.pixel.height : bufferAspect() });
     },
     dispose() {
       if (disposed) return;
@@ -678,6 +731,17 @@ function compactRange(
   control.wrap.classList.add('control-compact');
   control.wrap.querySelector('.control-help')?.remove();
   return control;
+}
+
+/** Replay a one-shot CSS animation class on an element. */
+function restartAnimation(el: HTMLElement, className: string): void {
+  el.classList.remove(className);
+  void el.offsetWidth; // force a style flush so the animation starts again
+  el.classList.add(className);
+}
+
+function prefersReducedMotion(): boolean {
+  return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 
 function radioControl(

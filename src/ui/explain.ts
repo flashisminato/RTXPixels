@@ -7,17 +7,39 @@ import type { Scene, TraceEvent, Vec3, ViewState } from '../contracts.ts';
  * scale and a sphere's outline is an exact circle.
  * Screen angles are not measurements. Incidence and reflection use the 3D vectors.
  */
-const VIEW_YAW_DEG = 40;
-const VIEW_PITCH_DEG = 20;
+export const DEFAULT_VIEW = { yawDeg: 40, pitchDeg: 20 } as const;
+export const VIEW_PITCH_RANGE = { min: 5, max: 75 } as const;
 const NORMAL_LENGTH = 0.55;
 const MISS_LENGTH = 1.35;
 
-const yaw = VIEW_YAW_DEG * Math.PI / 180;
-const pitch = VIEW_PITCH_DEG * Math.PI / 180;
-/** Unit vector from the scene toward the viewer (front-right, above). */
-export const VIEW_TOWARD_VIEWER: Vec3 = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
-const SCREEN_RIGHT: Vec3 = [Math.cos(yaw), 0, Math.sin(yaw)];
-const SCREEN_UP: Vec3 = [-Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), Math.cos(yaw) * Math.sin(pitch)];
+type ViewBasis = { toward: Vec3; right: Vec3; up: Vec3 };
+function viewBasis(yawDeg: number, pitchDeg: number): ViewBasis {
+  const yaw = yawDeg * Math.PI / 180;
+  const pitch = pitchDeg * Math.PI / 180;
+  return {
+    toward: [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)],
+    right: [Math.cos(yaw), 0, Math.sin(yaw)],
+    up: [-Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), Math.cos(yaw) * Math.sin(pitch)],
+  };
+}
+/** Unit vector from the scene toward the viewer in the default view (front-right, above). */
+export const VIEW_TOWARD_VIEWER: Vec3 = viewBasis(DEFAULT_VIEW.yawDeg, DEFAULT_VIEW.pitchDeg).toward;
+
+// The reader can turn the schematic (Figure 2.1); every projection reads this.
+let currentView = { yawDeg: DEFAULT_VIEW.yawDeg as number, pitchDeg: DEFAULT_VIEW.pitchDeg as number };
+let basis = viewBasis(currentView.yawDeg, currentView.pitchDeg);
+
+/** Turn the schematic's 3D view. Yaw wraps around; pitch stays between 5° and 75°. */
+export function setSchematicView(yawDeg: number, pitchDeg: number): void {
+  if (!Number.isFinite(yawDeg) || !Number.isFinite(pitchDeg)) return;
+  const yaw = ((yawDeg % 360) + 540) % 360 - 180;
+  const pitch = Math.min(VIEW_PITCH_RANGE.max, Math.max(VIEW_PITCH_RANGE.min, pitchDeg));
+  currentView = { yawDeg: yaw, pitchDeg: pitch };
+  basis = viewBasis(yaw, pitch);
+}
+export function schematicView(): { yawDeg: number; pitchDeg: number } { return { ...currentView }; }
+/** Unit vector from the scene toward the viewer in the current view. */
+export function towardViewer(): Vec3 { return [...basis.toward]; }
 
 export const SCHEMATIC_NOTE = 'Schematic: a 3D view of the computed points on a coordinate frame.';
 export const CANVAS_LABEL = '3D schematic on a coordinate frame, not a second camera. +X sideways, +Y up, +Z depth.';
@@ -29,6 +51,8 @@ export type PlanSegment = {
   label: string;
   /** For shadow checks: which light (0 is the main light). */
   light?: number;
+  /** Index of the trace event that produced it, so the figure can play the path in order. */
+  step?: number;
 };
 
 export type PlanMark = {
@@ -37,6 +61,8 @@ export type PlanMark = {
   label: string;
   /** For light marks: which light (0 is the main light). */
   light?: number;
+  /** Index of the trace event that produced it (see PlanSegment.step). */
+  step?: number;
 };
 
 export type DiagramPlan = {
@@ -69,8 +95,8 @@ export function objectName(id: string | null): string {
 
 export function project(point: Vec3): { x: number; y: number } {
   return {
-    x: point[0] * SCREEN_RIGHT[0] + point[1] * SCREEN_RIGHT[1] + point[2] * SCREEN_RIGHT[2],
-    y: point[0] * SCREEN_UP[0] + point[1] * SCREEN_UP[1] + point[2] * SCREEN_UP[2],
+    x: point[0] * basis.right[0] + point[1] * basis.right[1] + point[2] * basis.right[2],
+    y: point[0] * basis.up[0] + point[1] * basis.up[1] + point[2] * basis.up[2],
   };
 }
 
@@ -249,8 +275,17 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
   let markedCamera = false;
   const markedLights = new Set<number>();
   let surfaceId: string | null = null;
+  let step = -1;
+  // Everything pushed while handling event k carries step k.
+  const tagged = <T extends { step?: number }>(list: T[]) => {
+    const push = list.push.bind(list);
+    list.push = (...items: T[]) => push(...items.map(item => ({ ...item, step })));
+  };
+  tagged(segments);
+  tagged(marks);
 
   for (const event of events) {
+    step++;
     switch (event.kind) {
       case 'hit': {
         sawHit = true;

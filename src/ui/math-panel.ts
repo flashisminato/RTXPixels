@@ -574,6 +574,8 @@ function draw(container: HTMLElement, view: ViewState | null): void {
   more.addEventListener('click', () => {
     expandedMath.set(container, !expanded);
     draw(container, latestView.get(container) ?? null);
+    // Expanding brings the steps in one after another (CSS; off under reduced motion).
+    if (!expanded) container.querySelector('.math-paper')?.classList.add('is-opening');
     container.querySelector<HTMLButtonElement>('.math-more')?.focus({ preventScroll: true });
   });
   if (expanded) {
