@@ -1,5 +1,5 @@
 /**
- * Browser checks for the editorial interface (docs/design/editorial-ui-brief.md).
+ * Browser checks for the editorial interface.
  *
  *   node --test tests/ui/editorial.browser.mjs
  *

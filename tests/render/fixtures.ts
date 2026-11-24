@@ -4,7 +4,7 @@ import type { CameraBasis, RenderFrame, Scene, Vec3, ViewMode } from '../../src/
  * Scenes and cameras used by the renderer checks.
  *
  * These are renderer-local test fixtures, not the product preset. The authored
- * scene, its colours, and its slider limits belong to AI 3. Values here are
+ * scene, its colours, and its slider limits live in src/scene/preset.ts. Values here are
  * chosen so that expected results can be derived by hand, which is the whole
  * point: a test whose expectation came out of the renderer proves nothing.
  */

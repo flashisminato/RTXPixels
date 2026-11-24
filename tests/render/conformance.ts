@@ -2,7 +2,7 @@
  * Compile-time conformance to the shared contract.
  *
  * Nothing here runs. Its job is to fail `tsc` if the renderer ever stops
- * matching the module signature AI 3 will import:
+ * matching the module signature main.ts imports:
  *
  *   createRenderer(canvas: HTMLCanvasElement, hooks: RendererHooks): Renderer;
  *
@@ -13,7 +13,7 @@
 import type { Renderer, RendererHooks, RenderFrame } from '../../src/contracts';
 import { createRenderer } from '../../src/render/index';
 
-// The exact signature AI 3 depends on.
+// The exact signature main.ts depends on.
 type ContractFactory = (canvas: HTMLCanvasElement, hooks: RendererHooks) => Renderer;
 
 // Fails to compile if the extra parameter ever stops being optional, if the

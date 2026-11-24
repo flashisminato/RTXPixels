@@ -39,12 +39,12 @@ export type FragmentSourceOptions = {
  * - `sceneColoring` computes ambient and shadow terms before its final hit
  *   test. Here a miss returns sky immediately.
  * - Camera rotation came from Euler angles in `Rotations.metal`. Here the
- *   camera basis arrives as explicit uniforms from AI 3, so CPU and GPU cannot
+ *   camera basis arrives as explicit uniforms from the CPU core, so CPU and GPU cannot
  *   disagree about convention.
  *
  * Adapted mathematics: the analytic sphere and plane intersection forms follow
  * the standard quadratic / plane-equation derivations also used by the source.
- * Provenance is recorded in docs/handoffs/ai1.md.
+ * Provenance: docs/contributions.md and the credits page.
  */
 export function buildTraceFragmentSource(options: FragmentSourceOptions = {}): string {
   const debug = options.debug === true;

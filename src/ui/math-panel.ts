@@ -9,7 +9,7 @@ import { planeDigits, rootDigits, sphereDigits } from './precision.ts';
 
 /**
  * Chapter 3, "The mathematics": one section per computation, each following the
- * same editorial sequence (docs/design/editorial-ui-brief.md §5.6):
+ * same editorial sequence:
  *
  *   purpose (with its assumptions) · figure · caption · Law (numbered) ·
  *   Derivation ▸ · With this pixel's numbers · Result and interpretation

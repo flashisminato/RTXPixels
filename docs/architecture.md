@@ -1,8 +1,8 @@
-# Architecture — v1 renderer/core integration
+# Architecture
 
 ## Shared boundary
 
-Renderer and UI consume the unchanged types in `src/contracts.ts`. They do not own state, fallback, runtime dependencies, scheduling or the image canvas. AI 3 created only the initial stubs. The integration merge replaces the renderer stub with AI 1's existing main implementation without changing that implementation; UI/style files remain unchanged from bootstrap.
+The renderer (`src/render/`), the CPU core (`src/core/`) and the interface (`src/ui/`) share the types in `src/contracts.ts`. The renderer and the interface do not own state, fallback, scheduling or the image canvas: `src/main.ts` does, and the store (`src/state/`) is the single source of truth for the scene.
 
 ## Snapshot → frame → image + inspection
 
@@ -18,7 +18,7 @@ The camera looks along +Z initially, with +Y up. The CPU supplies forward/right/
 
 Sphere intersections accept nonnegative discriminants and select the nearest strict in-range root, including exit roots. Plane denominators below 1e-6 miss. A strict closest-distance bound preserves the earlier array object on an exact tie. Missing geometry never causes a material read.
 
-A bounded iterative trace resolves a complete nearest hit before choosing material behavior. Mirrors are untinted, offset by EPS along the oriented normal, and use at most four redirects. Matte surfaces still shade after the final allowed redirect. A fifth required reflection ends black with a budget event. Diagnostics stop at the first hit and do not use shadows/reflections.
+A bounded iterative trace resolves a complete nearest hit before choosing material behavior. Mirrors are untinted, offset by EPS along the oriented normal, and use at most four redirects. With ray tracing off ('raster' view), the first surface is shaded with direct light only: no shadow rays and no redirects. Matte surfaces still shade after the final allowed redirect. A fifth required reflection ends black with a budget event. Diagnostics stop at the first hit and do not use shadows/reflections.
 
 Matte illumination uses the specified ambient + inverse-square Lambertian point-light model. Shadow distances are bounded strictly before the light. Every v1 object blocks shadows, including mirrors. Beauty applies Reinhard then piecewise sRGB; albedo applies sRGB only; hit bypasses both.
 
@@ -32,8 +32,8 @@ Fallback yields after roughly a 4 ms computation slice (one pixel can overrun th
 
 Creation, drawing, or graphics-context loss switches to CPU. Main disposes the renderer and replaces only the image canvas before asking for Canvas2D. It never requests both context types on the same canvas; the UI host and host listeners survive.
 
-After context loss this checkpoint stays on CPU for the session. Events from a detached WebGL canvas are ignored; reload retries WebGL. Automatic GPU recovery is not claimed. Shutdown aborts work, cancels animation frames, removes observers/listeners, and disposes renderer/UI resources. Expected operational errors are shown in status text. UI subscriber failures are distinguished from rejected controls, and changed frames are invalidated before UI notification.
+After context loss the page stays on CPU for the session. Events from a detached WebGL canvas are ignored; reload retries WebGL. Automatic GPU recovery is not claimed. Shutdown aborts work, cancels animation frames, removes observers/listeners, and disposes renderer/UI resources. Expected operational errors are shown in status text. UI subscriber failures are distinguished from rejected controls, and changed frames are invalidated before UI notification.
 
 ## Scope and performance
 
-No extra renderer, worker, cache, scene editor, framework, server, telemetry or recovery log was introduced. There is no glass, stochastic sampling, soft shadowing or diffuse global illumination. Performance measurements do not establish a frame-rate target; low resolution keeps the reference fallback bounded and understandable.
+No worker, cache, framework, server, telemetry or recovery log is used. Added balls are moved by a small fixed-step physics routine (`src/scene/physics.ts`) that runs only while something moves. There is no glass, stochastic sampling, soft shadowing or diffuse global illumination. Performance measurements do not establish a frame-rate target; low resolution keeps the reference fallback bounded and understandable.

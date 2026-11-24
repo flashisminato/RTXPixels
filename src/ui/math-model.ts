@@ -7,7 +7,7 @@ import { incidenceDegrees, objectName, reflectionDegrees } from './explain.ts';
  * The numbers behind the "Explain the math" figures, for one inspected pixel.
  *
  * Pure: no DOM, so it is unit-tested in Node. Every value is either read from
- * the published inspection (the trace AI 3's CPU tracer recorded) or recomputed
+ * the published inspection (the trace the CPU tracer recorded) or recomputed
  * from the same scene with the contract's formulas. Recomputed values carry
  * their difference from the recorded value, so tests can prove the panel shows
  * the traced numbers rather than a parallel approximation.

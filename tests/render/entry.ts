@@ -4,7 +4,7 @@
  * Runs every case, records the actual GPU it ran against, and publishes the
  * result on `window.__AI1_RESULT__` for the headless runner to collect. The
  * reported renderer string matters: a pass on a software rasteriser is not the
- * same claim as a pass on real hardware, and the handoff must say which.
+ * same claim as a pass on real hardware, and reports must say which.
  */
 import { main } from './renderer.test';
 

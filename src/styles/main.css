@@ -87,7 +87,7 @@ h3 { font-weight: 620; }
   .chapter > h2 { font-size: 22px; }
 }
 
-/* ---- the computed picture (AI 3 inserts the canvas into .canvas-host) ------ */
+/* ---- the computed picture (main.ts inserts the canvas into .canvas-host) --- */
 .stage-frame { position: relative; padding: 0; border: 0; margin: 0; background: var(--paper-2); box-shadow: 0 0 0 1px var(--rule); }
 .stage-frame:focus-within { outline: 2px solid var(--ink); outline-offset: 3px; }
 .canvas-host { width: 100%; aspect-ratio: 16 / 9; padding: 0; border: 0; margin: 0; background: var(--paper-2); display: block; outline: none; touch-action: manipulation; }

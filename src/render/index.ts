@@ -53,7 +53,7 @@ export type RendererInternals = Renderer & {
  *
  * Scope, per the shared ownership table: this module computes pixels and
  * nothing else. It owns no DOM beyond the supplied canvas, mutates no store,
- * runs no animation loop, and implements no CPU fallback. AI 3 decides when to
+ * runs no animation loop, and implements no CPU fallback. main.ts decides when to
  * call `draw`.
  *
  * @throws ContextCreationError when WebGL2 is unavailable.
@@ -125,7 +125,7 @@ export function createRenderer(
    * every sphere silently becomes an ellipse. The picture still looks
    * plausible, which is what makes it dangerous in a teaching app.
    *
-   * Matching the two is AI 3's responsibility under the shared contract, so
+   * Matching the two is the host's responsibility under the shared contract, so
    * this only reports; it never "corrects" the frame it was given. Reporting is
    * a console warning rather than a thrown error because a transient mismatch
    * during layout is normal and must not break rendering.

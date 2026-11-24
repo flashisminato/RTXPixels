@@ -1,54 +1,49 @@
-# How does the RTX work? A real-time ray-tracing interactive environment with math illustration using a WebGL renderer
+# RTXPixel
 
-The app renders the original room through **WebGL2 renderer**, capped at 640×360, with spheres, planes, a perfect mirror, direct matte lighting and hard shadows. A cancelable **160×90 CPU fallback** handles unavailable or lost graphics contexts. Both buffers fit the host aspect. Click the image to inspect actual CPU ray events for the same frame, select a computed mirror example, or reset. No API keys or runtime services.
+**Real-time ray-tracing interactive environment in WebGL.** Ever wondered why RTX makes the lighting in games look so real? Click any pixel of a small ray-traced room and follow the ray behind it: where it lands, how it bounces off mirrors, whether each light reaches it, and how that becomes a color. Every figure, equation and number is recomputed live from the scene you control.
 
-**Not a finished team release:** AI 2's full controls/explanatory diagram has not arrived; its minimal development harness is preserved. The renderer is no longer a stub. Contract **v1** remains unchanged: no glass.
+Live site: https://flashisminato.github.io/Ray-Tracking/
+
+## What you can do
+
+- **Follow a pixel.** Click the picture (or type a pixel) to get a one-paragraph answer, an animated 3D figure of the path, and the full mathematics behind the color.
+- **Change the scene.** Move the colored ball in x, y and z; switch the center sphere between mirror and matte; repaint the back wall or turn it into a mirror; add up to four colored point lights; add up to four balls that drop in, bounce and settle (or stay static).
+- **Switch ray tracing on and off** to see exactly what it adds: reflections and shadows.
+- **Work directly in Figure 2.1.** Drag the camera, the lights and the balls; click a ball for x/y/z arrows; click a surface to follow its pixel; turn the 3D view.
+
+The picture is drawn by a WebGL2 ray tracer (up to 640×360). A CPU reference tracer computes every number on the page from the same scene, and a low-resolution CPU fallback takes over if WebGL is unavailable. No accounts, API keys or servers are involved.
 
 ## Run and verify
 
-Tested runtime: Node **26.4.0**, npm **11.17.0**. Use `nvm install && nvm use`; exact package/transitive versions are locked.
+Tested runtime: Node **26.4.0**, npm **11.17.0** (`nvm install && nvm use`). Exact package versions are locked.
 
 ```sh
 npm ci
-npm run dev
-npm run check       # all-source typecheck + Node core/integration tests + build
-npm run preview
-npm run test:renderer # browser-only GPU suite and production smoke
-npm run test:browser  # combined application, CPU/GPU parity and fallback
+npm run dev             # local development server
+npm run check           # typecheck + Node tests + production build
+npm run preview         # serve the production build
+npm run test:renderer   # browser-only GPU renderer checks and production smoke
+npm run test:browser    # whole app in a browser: CPU/GPU pixel parity, fallback, controls
+node --test tests/ui/*.test.ts          # interface logic
+node --test tests/ui/editorial.browser.mjs  # interface in a browser
 ```
 
-`test:browser` builds fresh output and uses installed Google Chrome through `playwright-core`. For another installation, set `CHROME_PATH` to its executable. No browser is downloaded automatically. The browser suite starts/stops its own local servers and isolated browser contexts. It is separate from CI's portable math/build gate.
-
-Latest verification: **31 numerical/state/integration tests, 26 renderer checks, 11 renderer production-smoke checks and 10 combined-browser tests passed**, plus typecheck and build. The combined suite includes 630 sampled CPU/GPU pixel/diagnostic comparisons at DPR 1 and 2 on SwiftShader. AI 1's standalone renderer suite also passed on ANGLE Metal / Apple M1. See [verification](docs/verification.md) for scope and limits. Node and browser-only renderer tests have separate commands; both are type-checked. Update browser selectors when the real interface is integrated.
+The browser suites use the installed Google Chrome through `playwright-core`; set `CHROME_PATH` for another installation. No browser is downloaded automatically.
 
 ## Structure
 
-- `src/contracts.ts`: unchanged shared v1 types and constants.
-- `src/core/`: vector math, camera, intersections, shading, events, display conversion and frame/selection helpers.
-- `src/scene/`: original room preset and authoritative control limits.
-- `src/state/`: validated actions, immutable snapshots and monotonic scene versions.
-- `src/fallback/`: cancelable, event-free bulk CPU rendering.
-- `src/main.ts`: canvas ownership, scheduling, resize, inspection and fallback orchestration.
-- `src/render/`: WebGL2 implementation, preserved unchanged from the existing main branch.
-- `src/ui/`, `src/styles/`: A minimal development harness.
+- `src/contracts.ts`: the shared types and limits that the renderer, the CPU core and the interface agree on.
+- `src/core/`: vector math, camera, intersections, shading, trace events, display conversion, frame and pixel helpers.
+- `src/scene/`: the room preset, control limits, and the ball physics (`physics.ts`).
+- `src/state/`: validated actions, immutable snapshots and scene versions.
+- `src/render/`: the WebGL2 ray tracer.
+- `src/fallback/`: cancelable CPU rendering when WebGL is unavailable.
+- `src/main.ts`: canvas ownership, scheduling, resize, inspection and fallback.
+- `src/ui/`, `src/styles/`: the page, Figure 2.1, the mathematics chapter and the controls.
 
-Read [architecture](docs/architecture.md), [the shared contract](docs/contract-v1.md), [ownership](docs/ownership.md), and [integration notes](docs/integration-v1.md).
-
-## Team workflow
-
-Team repository: [flashisminato/Ray-Tracking](https://github.com/flashisminato/Ray-Tracking).
-
-The merge joins the existing renderer history at `2746fb1` and the `integration/core` checkpoint at `6bc55c3`, preserving both histories. It was prepared in a separate `integration/combined` checkout. The original `bootstrap-v1` and `core-v1` tags remain historical checkpoints, not tags for the combined app.
-
-Both feature accounts should fetch and update their feature branches from the same integrated `main` commit before their next handoff. Do not overwrite an entire checkout or merge an old renderer stub over real code. Only AI 3 integrates reviewed owned-file changes into main. Never use the reference repository as a write remote.
-
-## Deployment
-
-Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs support a root or repository subpath; no SPA rewrites are required. The `Verify` workflow checks pushes and pull requests, then deploys the built `dist` artifact to [GitHub Pages](https://flashisminato.github.io/Ray-Tracking/) only for successful runs on `main` outside pull requests. It can also be run manually on `main`. In repository Settings → Pages, keep the source set to **GitHub Actions**; do not publish the source tree with Jekyll. Core computation works offline **after the page loads**; cold-start offline caching is not implemented.
+See [architecture](docs/architecture.md) for how a scene becomes a picture and an inspected pixel.
 
 ## Implementation
-
-*Moved here from chapter 4 of the web page.*
 
 The same mathematics is implemented twice. A CPU reference tracer in TypeScript produces every number on the page: the answer, the steps and the equations. A GPU shader in GLSL draws the picture (Figure 1.1). The browser tests check that the two agree pixel by pixel.
 
@@ -61,15 +56,17 @@ The same mathematics is implemented twice. A CPU reference tracer in TypeScript 
 
 ## Limits and credits
 
-*Moved here from chapter 5 of the web page.*
+Version 1 computes spheres (up to six: the two originals plus four added balls), planes, up to four point lights, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention. See the [credits and limitations](public/notices/credits.html) page and the provenance notes below.
 
-Version 1 computes spheres, planes, up to four point lights, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention. See the [credits and limitations](public/notices/credits.html) page and the provenance notes below.
+## Deployment
 
-## Provenance and limitations
+Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs support a root or repository subpath; no SPA rewrites are required. The `Verify` workflow checks pushes and pull requests, then deploys the built `dist` artifact to [GitHub Pages](https://flashisminato.github.io/Ray-Tracking/) only for successful runs on `main` outside pull requests. It can also be run manually on `main`. In repository Settings → Pages, keep the source set to **GitHub Actions**; do not publish the source tree with Jekyll. Core computation works offline **after the page loads**; cold-start offline caching is not implemented.
 
-Inspired by [Light Teachings by Kia Preston (pkncoder)](https://github.com/pkncoder/Light-Teachings/tree/57260fe2a6badbc826271856bbcf6c8a2090de17). AI 3 did not copy or adapt upstream source; this implementation follows the supplied mathematical contract. Incoming adaptations must preserve the full upstream MIT text and identify source commits/functions. See [contribution record](docs/contributions.md) and [public credits](public/notices/credits.html).
+## Provenance
 
-Sampled CPU/GPU parity is verified on headless SwiftShader, not universally across hardware/drivers. Second-device verification, full keyboard pixel selection, a first-user study, deployed-host testing and organizer/deadline verification remain outstanding. See the [release checklist and demo guide](docs/release.md).
+Inspired by [Light Teachings by Kia Preston (pkncoder)](https://github.com/pkncoder/Light-Teachings/tree/57260fe2a6badbc826271856bbcf6c8a2090de17). No upstream source code is copied or adapted here; the implementation follows standard ray-tracing mathematics. Any future adaptation must keep the full upstream MIT text and record the source commit and functions. See [provenance notes](docs/contributions.md) and the [public credits](public/notices/credits.html).
+
+CPU/GPU agreement is verified by sampled pixel comparisons in headless Chrome, not on every GPU and driver.
 
 ## Repository license
 

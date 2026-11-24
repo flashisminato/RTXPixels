@@ -7,7 +7,7 @@ import { lookAt } from './fixtures';
  *
  * Every other renderer check runs with `{ debug: true, preserveDrawingBuffer:
  * true }` and reads pixels back with readPixels. That is NOT how the app will
- * use this module. AI 3 calls `createRenderer(canvas, hooks)` with exactly two
+ * use this module. main.ts calls `createRenderer(canvas, hooks)` with exactly two
  * arguments, which means:
  *
  *   - the production shader variant (no DEBUG_VARIANT, no uDebugMode),
@@ -74,7 +74,7 @@ const state = {
 window.__AI1_SMOKE__ = state;
 
 function run(): void {
-  // Lay the canvas out the way AI 2's host would: a sized element in the page,
+  // Lay the canvas out the way the interface's host does: a sized element in the page,
   // with the drawing buffer smaller than the CSS box.
   const host = document.createElement('div');
   host.style.cssText = 'width:640px;height:360px;margin:0;padding:0;border:0;';
@@ -110,7 +110,7 @@ function run(): void {
     options: { maxRedirects: 4, viewMode: 'beauty' },
   });
 
-  // Render-on-demand, the pattern AI 3 will use: draw only when dirty.
+  // Render-on-demand, the pattern main.ts uses: draw only when dirty.
   const tick = () => {
     if (dirty) {
       try {
