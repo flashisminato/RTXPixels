@@ -303,6 +303,7 @@ control, and visual review at 1280 px and 390 px.
 | P4 Mathematics | Laws, assumptions, derivations, numbers, results, checks | Equations numbered (3.k) in a grid column; derivations aligned with an HTML grid of inline MathML. |
 | P5 Reactive | Drag pixel / object / light; linked highlighting | All drags have keyboard equivalents and ARIA slider semantics. |
 | P6 Transparency | Chapter 4 listings from the real CPU and GPU source | `?raw` import of `src/core`; GLSL from `buildTraceFragmentSource()`. |
+| P7 Handoff | Review fixes, handoff note, screenshots | Fixed two chapter-3 defects: the typeset shading law lacked 1/π (also on `main` since PR #3), and printed substitutions did not reproduce their results (`precision.ts`). See [`editorial-ui-handoff.md`](editorial-ui-handoff.md). |
 
 **Deviations from the specification, and why**
 
@@ -315,3 +316,4 @@ control, and visual review at 1280 px and 390 px.
 
 - `fitBuffer` floors the drawing-buffer height (640×359 on many hosts). On this branch AI 3's browser suite passes 10/10 only because the test viewport's host now floors to 360. The `Math.round` fix is still needed in `src/core/frame.ts`.
 - Safari, Firefox and phone hardware are not verified; MathML rendering differs most across engines.
+- On phones, long equation lines scroll sideways inside their block (MathML Core has no line breaking).
