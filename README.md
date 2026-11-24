@@ -44,7 +44,7 @@ Both feature accounts should fetch and update their feature branches from the sa
 
 ## Deployment
 
-Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs support a root or repository subpath; no SPA rewrites are required. No host account, publication workflow, credentials or live URL is configured. Publication requires the human's chosen destination and authorization. Core computation works offline **after the page loads**; cold-start offline caching is not implemented.
+Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs support a root or repository subpath; no SPA rewrites are required. The `Verify` workflow checks pushes and pull requests, then deploys the built `dist` artifact to [GitHub Pages](https://flashisminato.github.io/Ray-Tracking/) only for successful runs on `main` outside pull requests. It can also be run manually on `main`. In repository Settings → Pages, keep the source set to **GitHub Actions**; do not publish the source tree with Jekyll. Core computation works offline **after the page loads**; cold-start offline caching is not implemented.
 
 ## Provenance and limitations
 
