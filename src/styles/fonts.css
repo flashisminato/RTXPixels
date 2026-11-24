@@ -1,0 +1,22 @@
+/* Bundled locally: the app makes no network requests after load. */
+@font-face {
+  font-family: 'Inter';
+  src: url('./fonts/inter-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 900; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('./fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2');
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+/* Latin Modern Math subset with its OpenType MATH table (see fonts/README-FAP-Math.txt). */
+@font-face {
+  font-family: 'FAP Math';
+  src: url('./fonts/fap-math.woff2') format('woff2');
+  font-weight: 400; font-style: normal; font-display: swap;
+}

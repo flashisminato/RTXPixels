@@ -1,0 +1,25 @@
+/* Design tokens: Interactive Mathematical Editorialism.
+   Every accent colour has exactly one meaning (see docs/design/editorial-ui-brief.md §4.1). */
+:root {
+  --paper: #ffffff;          /* page */
+  --paper-2: #f5f5f3;        /* figure plates, parameter panel, code */
+  --ink: #171717;            /* text, geometry, surfaces, normals */
+  --graphite: #62666b;       /* secondary text, captions */
+  --construction: #9ca3af;   /* construction lines, grids, dimensions */
+  --rule: #e4e4e0;           /* hairline rules */
+  --signal: #d52232;         /* the followed camera ray D, the selected pixel, selected intersections */
+  --science: #245ba7;        /* secondary rays: reflected R, shadow ray L */
+  --verified: #167438;       /* a recomputed value that matches the tracer */
+  --caution: #8a5a00;        /* starting / fallback status text */
+
+  --font-text: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-math: 'FAP Math', 'Latin Modern Math', 'STIX Two Math', 'Cambria Math', math;
+  --font-code: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* 4 px spacing grid */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px; --s10: 40px; --s12: 48px; --s16: 64px;
+
+  --column: 840px;           /* reading column, within the 760-920 px range */
+  --wide: 1080px;            /* figures may bleed to this width */
+  --toc: 200px;              /* chapter index */
+}

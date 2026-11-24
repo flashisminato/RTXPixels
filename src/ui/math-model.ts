@@ -83,7 +83,7 @@ export type ShadeStep = {
   selfBlocked: boolean;
   visibility: 0 | 1;
   albedo: Vec3; ambient: number; lightColor: Vec3; intensity: number;
-  /** a rho + V (rho (.) c_L) I max(N.L, 0) / max(d^2, 0.01) */
+  /** a rho + V (rho (.) c_L) I max(N.L, 0) / (pi max(d^2, 0.01)), as in contract v1 */
   color: Vec3;
   /** max |component| difference from the recorded linear color (when this surface ends the path) */
   colorError: number | null;

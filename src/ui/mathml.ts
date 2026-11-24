@@ -56,8 +56,17 @@ export function v(letter: string): Element {
 /** Vector with an upright subscript label, e.g. vs('c', 'L') renders 𝐜_L. */
 export const vs = (letter: string, label: string): Element => sub(v(letter), label.length > 1 ? mu(label) : mi(label));
 
-export const fenced = (open: string, inner: MNode, close: string): Element =>
-  row(mo(open, { stretchy: 'true', lspace: '0', rspace: '0' }), wrap(inner), mo(close, { stretchy: 'true', lspace: '0', rspace: '0' }));
+/**
+ * Delimiters stretch only around tall content (fractions, roots, tables).
+ * Latin Modern's stretch variants are wider than its base glyphs, so stretching
+ * single-line content left visible gaps inside the brackets.
+ */
+export function fenced(open: string, inner: MNode, close: string): Element {
+  const content = wrap(inner);
+  const tall = ['mfrac', 'msqrt', 'mroot', 'mtable'].includes(content.localName) || !!content.querySelector('mfrac, msqrt, mroot, mtable');
+  const attrs = { stretchy: tall ? 'true' : 'false', lspace: '0', rspace: '0' };
+  return row(mo(open, attrs), content, mo(close, { ...attrs }));
+}
 export const paren = (inner: MNode): Element => fenced('(', inner, ')');
 export const norm = (inner: MNode): Element => fenced('\u2016', inner, '\u2016');
 
@@ -81,8 +90,22 @@ export function num(value: number, digits = 3): Element {
 
 /** Coordinate triple: (x, y, z). */
 export function tuple(value: Vec3, digits = 3): Element {
-  return row(mo('('), num(value[0], digits), comma(), num(value[1], digits), comma(), num(value[2], digits), mo(')'));
+  // Not stretchy: Latin Modern's stretch variants are wider than the base glyph,
+  // which left visible gaps inside single-line tuples.
+  const open = mo('(', { lspace: '0', rspace: '0', stretchy: 'false' });
+  const close = mo(')', { lspace: '0', rspace: '0', stretchy: 'false' });
+  return row(open, num(value[0], digits), comma(), num(value[1], digits), comma(), num(value[2], digits), close);
 }
+
+/** Scientific notation with a true minus and times sign, e.g. 3.6 x 10^-16. */
+export function sci(value: number, digits = 1): Element {
+  if (value === 0) return mn('0');
+  const exponent = Math.floor(Math.log10(Math.abs(value)));
+  const mantissa = value / 10 ** exponent;
+  const exp = exponent < 0 ? row(mo('\u2212', { form: 'prefix', lspace: '0', rspace: '0' }), mn(String(-exponent))) : mn(String(exponent));
+  return row(num(mantissa, digits), mo('\u00d7'), sup(mn('10'), exp));
+}
+
 
 export function degrees(value: number, digits = 1): Element {
   return row(num(value, digits), mo('\u00b0', { lspace: '0', rspace: '0' }));

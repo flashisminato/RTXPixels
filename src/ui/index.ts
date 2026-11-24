@@ -4,6 +4,7 @@ import { CONTROL_RANGES } from '../scene/preset.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
 import { renderMathPanel } from './math-panel.ts';
+import { buildSourceChapter } from './source-view.ts';
 import { normalizedPoint, snapToStep, stepSelection } from './selection.ts';
 import '../styles/main.css';
 
@@ -32,14 +33,13 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const question = document.createElement('p');
   question.className = 'question';
   question.textContent = 'How does a game decide what a mirror shows?';
-  header.append(title, question);
+  const abstract = document.createElement('p');
+  abstract.className = 'abstract';
+  abstract.textContent = 'This document ray traces a small room and lets you follow the ray behind any pixel: where it lands, how it bounces off the mirror, whether the light reaches it, and how that becomes a color. Every figure, equation and number is recomputed live from the same scene you control.';
+  header.className = 'front';
+  header.append(title, question, abstract);
 
-  const layout = document.createElement('div');
-  layout.className = 'layout';
-  const picture = document.createElement('section');
-  picture.className = 'picture';
-  const pictureTitle = document.createElement('h2');
-  pictureTitle.textContent = 'The picture';
+  const picture = chapter('ch-1', '1', 'The picture');
   const lead = document.createElement('p');
   lead.className = 'lead';
   lead.textContent = 'Move the colored object and watch its reflection. Then follow one pixel to see the bounce that chose its color.';
@@ -81,12 +81,15 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const statusHelp = document.createElement('p');
   statusHelp.className = 'status-help';
   statusHelp.textContent = 'This line is the picture’s actual status. Starting means it is still computing. Ready and fallback are real pictures. An error means the picture is unavailable, and the schematic will not invent one.';
-  picture.append(pictureTitle, lead, frame, pictureHelp, actionsRow, actionHelp, status, statusHelp);
 
-  const controls = document.createElement('section');
+  const controls = document.createElement('aside');
   controls.className = 'controls';
-  const controlsTitle = document.createElement('h2');
-  controlsTitle.textContent = 'Try this first';
+  controls.setAttribute('aria-label', 'Parameters');
+  const controlsTitle = document.createElement('h3');
+  controlsTitle.textContent = 'Parameters';
+  const controlsHint = document.createElement('p');
+  controlsHint.className = 'controls-hint';
+  controlsHint.textContent = 'Try this first: move the colored object and watch its reflection.';
   const target = rangeControl(signal, `${ns}-target`, 'Move the colored object',
     'Slide it sideways and watch the reflection. The colored object does not rotate.', CONTROL_RANGES.targetX, value => {
       commitNumber(value, CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
@@ -131,12 +134,12 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       actions.dispatch({ type: 'view-mode', value: mode });
     });
   more.append(moreSummary, moreHelp, light.wrap, redirects.wrap, viewMode.wrap);
-  controls.append(controlsTitle, target.wrap, mirror.wrap, camera.wrap, more);
-  layout.append(picture, controls);
+  controls.append(controlsTitle, controlsHint, target.wrap, mirror.wrap, camera.wrap, more);
 
   const explain = document.createElement('section');
   explain.className = 'explain';
-  const explainTitle = document.createElement('h2');
+  const explainTitle = document.createElement('h3');
+  explainTitle.className = 'explain-title';
   explainTitle.textContent = 'Pick a pixel to follow';
   const modeNote = document.createElement('p');
   modeNote.className = 'mode-note';
@@ -144,27 +147,28 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   pixelLine.className = 'pixel-line';
   const summary = document.createElement('p');
   summary.className = 'summary';
-  const direction = document.createElement('p');
-  direction.className = 'direction-note';
-  direction.textContent = 'The lines in the schematic walk from the camera into the scene. Physical light travels the opposite way, toward the camera.';
+  // Backward tracing is the chapter's governing definition, so it is set as one.
+  const direction = definition('2.1', 'Backward tracing.',
+    'The ray is followed from the camera into the scene, the opposite way to physical light, which travels from the light toward the camera. The lines in Figure 2.1 walk in that computational direction.');
   const figure = document.createElement('figure');
   figure.className = 'schematic';
   const caption = document.createElement('figcaption');
-  caption.textContent = SCHEMATIC_NOTE;
-  const diagramCanvas = document.createElement('canvas');
-  diagramCanvas.className = 'ray-diagram';
-  figure.append(caption, diagramCanvas);
+  caption.append(figureLabel('Figure 2.1'), SCHEMATIC_NOTE);
+  // An SVG host, not a canvas: the image canvas stays the first <canvas> in the page.
+  const diagramHost = document.createElement('div');
+  diagramHost.className = 'ray-diagram';
+  figure.append(caption, diagramHost);
   const events = document.createElement('ol');
   events.className = 'events';
   events.setAttribute('aria-label', 'Computed steps for the selected pixel');
   events.hidden = true;
-  const math = document.createElement('details');
+  // Chapter 3 is part of the document, not hidden behind a toggle; only the
+  // long derivations inside it use progressive disclosure.
+  const math = document.createElement('div');
   math.className = 'math';
-  const mathSummary = document.createElement('summary');
-  mathSummary.textContent = 'Explain the math';
   const mathBody = document.createElement('div');
-  math.append(mathSummary, mathBody);
-  explain.append(explainTitle, modeNote, pixelLine, summary, direction, figure, events, math);
+  math.append(mathBody);
+  explain.append(explainTitle, modeNote, pixelLine, summary, direction, figure, events);
 
   const footer = document.createElement('footer');
   footer.className = 'credits';
@@ -182,10 +186,62 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   record.hidden = true;
   record.setAttribute('aria-hidden', 'true');
 
-  shell.append(header, layout, explain, footer, record);
+  // ---- Chapter 1: the picture as Figure 1.1, parameters beside it, pixel selector below.
+  const pictureFigure = document.createElement('figure');
+  pictureFigure.className = 'fig fig-picture';
+  const pictureCaption = document.createElement('figcaption');
+  pictureCaption.append(figureLabel('Figure 1.1'), 'The scene, ray traced live on the GPU (WebGL2) at up to 640 × 360 pixels. ', pictureHelp);
+  pictureFigure.append(frame, pictureCaption);
+  const stageGrid = document.createElement('div');
+  stageGrid.className = 'stage-grid';
+  stageGrid.append(pictureFigure, controls);
+  const pixelSelect = document.createElement('fieldset');
+  pixelSelect.className = 'pixel-select';
+  const pixelLegend = document.createElement('legend');
+  pixelLegend.textContent = 'Pixel';
+  const pixelX = pixelInput(`${ns}-px`, 'x', 'Pixel column x, counted from the left');
+  const pixelY = pixelInput(`${ns}-py`, 'y', 'Pixel row y, counted from the top');
+  pixelSelect.append(pixelLegend, pixelX.label, pixelX.input, pixelY.label, pixelY.input);
+  const inspectRow = document.createElement('div');
+  inspectRow.className = 'inspect-row';
+  inspectRow.append(pixelSelect, actionsRow);
+  picture.append(lead, stageGrid, inspectRow, actionHelp, status, statusHelp);
+
+  // ---- Chapter 2: following one pixel.
+  const follow = chapter('ch-2', '2', 'Follow one pixel');
+  follow.append(explain);
+
+  // ---- Chapter 3: the mathematics.
+  const mathematics = chapter('ch-3', '3', 'The mathematics');
+  const mathLead = document.createElement('p');
+  mathLead.className = 'chapter-lead';
+  mathLead.textContent = 'The same calculation, written out as equations, for the pixel you selected. Every figure and number is recomputed from the scene above.';
+  mathematics.append(mathLead, math);
+
+  // ---- Chapter 4: the implementation, as it runs.
+  const implementation = chapter('ch-4', '4', 'Implementation');
+  const implLead = document.createElement('p');
+  implLead.className = 'chapter-lead';
+  implLead.textContent = 'The same mathematics is implemented twice: a CPU reference tracer in TypeScript, which produces every number in chapters 2 and 3, and the GPU shader in GLSL, which draws Figure 1.1. Both are shown exactly as they run, extracted from the source, not copied. The project’s browser tests check that the two agree pixel by pixel.';
+  implementation.append(implLead, ...buildSourceChapter());
+
+  // ---- Chapter 5: limits and credits.
+  const colophon = chapter('ch-5', '5', 'Limits and credits');
+  colophon.append(footer);
+
+  const doc = document.createElement('main');
+  doc.className = 'doc';
+  const chapters = [picture, follow, mathematics, implementation, colophon];
+  doc.append(...chapters);
+  const toc = tableOfContents(chapters);
+  shell.append(header, toc.nav, doc, record);
   root.replaceChildren(shell);
 
-  const diagram = createDiagram(diagramCanvas);
+  // Figure 2.1's handles move the real objects, through the same snapping as the sliders.
+  const diagram = createDiagram(diagramHost, (kind, x) => {
+    if (kind === 'target') commitNumber(x, CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
+    else commitNumber(x, CONTROL_RANGES.lightX, current?.controls.lightX, snapped => actions.dispatch({ type: 'light-x', value: snapped }));
+  });
 
   function placeMarker(): void {
     if (!selection) {
@@ -221,6 +277,23 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     actions.inspectAt(next.u, next.v);
   }, { signal });
   example.addEventListener('click', () => actions.inspectExample(), { signal });
+  const bufferSize = (): { width: number; height: number } => {
+    const image = canvasHost.querySelector('canvas');
+    return image && image.width > 0 && image.height > 0 ? { width: image.width, height: image.height } : pixelSize;
+  };
+  const commitPixel = (): void => {
+    const { width, height } = bufferSize();
+    const x = Math.round(Number(pixelX.input.value));
+    const y = Math.round(Number(pixelY.input.value));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const cx = Math.min(width - 1, Math.max(0, x));
+    const cy = Math.min(height - 1, Math.max(0, y));
+    selection = { u: (cx + 0.5) / width, v: (cy + 0.5) / height };
+    placeMarker();
+    actions.inspectAt(selection.u, selection.v);
+  };
+  pixelX.input.addEventListener('change', commitPixel, { signal });
+  pixelY.input.addEventListener('change', commitPixel, { signal });
   reset.addEventListener('click', () => actions.dispatch({ type: 'reset' }), { signal });
 
   diagram.show(null, 'Pick a pixel to follow its computed path.');
@@ -245,6 +318,9 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
         selection = { u: (matching.pixel.x + 0.5) / matching.pixel.width, v: (matching.pixel.y + 0.5) / matching.pixel.height };
       } else selection = null;
       placeMarker();
+      const size = bufferSize();
+      syncPixel(pixelX.input, matching ? matching.pixel.x : null, size.width - 1);
+      syncPixel(pixelY.input, matching ? matching.pixel.y : null, size.height - 1);
       const explanation = buildExplanation(view);
       explain.dataset.stale = explanation.stale ? 'true' : 'false';
       explainTitle.textContent = explanation.heading;
@@ -253,24 +329,157 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       summary.textContent = explanation.summary;
       events.replaceChildren(...explanation.items.map(item => {
         const li = document.createElement('li');
+        li.dataset.kind = item.kind;
         const itemTitle = document.createElement('h3');
-        itemTitle.textContent = item.title;
+        // Each step names the kind of computation it records, as a derivation would.
+        const kind = document.createElement('span');
+        kind.className = 'step-kind';
+        kind.textContent = STEP_KIND[item.kind];
+        itemTitle.append(kind, item.title);
         const detail = document.createElement('p');
         detail.textContent = item.detail;
         li.append(itemTitle, detail);
         return li;
       }));
       events.hidden = explanation.items.length === 0;
-      renderMathPanel(mathBody, view);
-      diagram.show(explanation.diagram, explanation.summary);
+      renderMathPanel(mathBody, view, {
+        inspectAt(u, v) { selection = { u, v }; placeMarker(); actions.inspectAt(u, v); },
+      });
+      diagram.show(explanation.diagram, explanation.summary, view.scene,
+        { targetX: view.controls.targetX, lightX: view.controls.lightX, ranges: { targetX: CONTROL_RANGES.targetX, lightX: CONTROL_RANGES.lightX } });
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       lifecycle.abort();
       hostObserver.disconnect();
+      toc.dispose();
       diagram.dispose();
       root.replaceChildren();
+    },
+  };
+}
+
+const STEP_KIND: Record<string, string> = { hit: 'Intersection', reflect: 'Reflection', shadow: 'Visibility', end: 'Result' };
+
+function chapter(id: string, number: string, title: string): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'chapter';
+  section.id = id;
+  const heading = document.createElement('h2');
+  heading.id = `${id}-title`;
+  const no = document.createElement('span');
+  no.className = 'chapter-no';
+  no.textContent = number;
+  heading.append(no, title);
+  section.setAttribute('aria-labelledby', heading.id);
+  section.dataset.chapter = number;
+  section.dataset.title = title;
+  section.append(heading);
+  return section;
+}
+
+function figureLabel(text: string): HTMLElement {
+  const label = document.createElement('b');
+  label.className = 'figure-label';
+  label.textContent = `${text}. `;
+  return label;
+}
+
+function definition(number: string, term: string, text: string): HTMLElement {
+  const box = document.createElement('p');
+  box.className = 'definition';
+  const label = document.createElement('span');
+  label.className = 'definition-label';
+  label.textContent = `Definition ${number}`;
+  const name = document.createElement('b');
+  name.textContent = ` ${term} `;
+  box.append(label, name, text);
+  return box;
+}
+
+function pixelInput(id: string, symbol: string, name: string): { label: HTMLLabelElement; input: HTMLInputElement } {
+  const label = document.createElement('label');
+  label.htmlFor = id;
+  label.className = 'math-symbol';
+  label.textContent = symbol;
+  const input = document.createElement('input');
+  input.id = id;
+  input.type = 'number';
+  input.inputMode = 'numeric';
+  input.min = '0';
+  input.step = '1';
+  input.setAttribute('aria-label', name);
+  return { label, input };
+}
+
+function syncPixel(input: HTMLInputElement, value: number | null, max: number): void {
+  input.max = String(Math.max(0, max));
+  if (document.activeElement === input) return;
+  input.value = value === null ? '' : String(value);
+}
+
+/** Chapter index with a scroll-spy that marks the chapter being read. */
+function tableOfContents(chapters: HTMLElement[]): { nav: HTMLElement; dispose(): void } {
+  const nav = document.createElement('nav');
+  nav.className = 'toc';
+  nav.setAttribute('aria-label', 'Chapters');
+  const list = document.createElement('ol');
+  const links = new Map<string, HTMLAnchorElement>();
+  for (const section of chapters) {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = `#${section.id}`;
+    const no = document.createElement('span');
+    no.className = 'toc-no';
+    no.textContent = section.dataset.chapter ?? '';
+    link.append(no, section.dataset.title ?? '');
+    item.append(link);
+    list.append(item);
+    links.set(section.id, link);
+  }
+  nav.append(list);
+  // The chapter being read is the last one whose top has passed 30% of the
+  // viewport (the first chapter before any has). Checked once per frame.
+  // Two edge cases: a chapter chosen in the index stays current while it is on
+  // screen; at the very bottom of the page, short final chapters can never
+  // reach the line, so the last chapter in view wins.
+  let frame = 0;
+  let pinned: HTMLElement | null = null;
+  const mark = (): void => {
+    frame = 0;
+    const view = window.innerHeight;
+    const line = view * 0.3;
+    if (pinned) {
+      const top = pinned.getBoundingClientRect().top;
+      if (top < -8 || top > view * 0.9) pinned = null;
+    }
+    const atBottom = window.scrollY + view >= document.documentElement.scrollHeight - 4;
+    const current = pinned
+      ?? (atBottom ? chapters.filter(section => section.getBoundingClientRect().top < view * 0.85).at(-1) : null)
+      ?? chapters.filter(section => section.getBoundingClientRect().top <= line).at(-1)
+      ?? chapters[0];
+    for (const [id, link] of links) {
+      if (id === current.id) link.setAttribute('aria-current', 'true');
+      else link.removeAttribute('aria-current');
+    }
+  };
+  const schedule = (): void => { if (!frame) frame = requestAnimationFrame(mark); };
+  nav.addEventListener('click', event => {
+    const link = (event.target as Element).closest('a');
+    const id = link?.getAttribute('href')?.slice(1);
+    const section = chapters.find(candidate => candidate.id === id);
+    if (section) { pinned = section; schedule(); }
+  });
+  window.addEventListener('scroll', schedule, { passive: true });
+  window.addEventListener('resize', schedule);
+  schedule();
+  return {
+    nav,
+    dispose: () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', schedule);
+      window.removeEventListener('resize', schedule);
     },
   };
 }
