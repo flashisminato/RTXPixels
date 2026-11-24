@@ -160,7 +160,7 @@ export class Figure {
   }
 
   /** Dimension line with end ticks and a centred label, offset from the measured segment. */
-  dimension(a: Pt, b: Pt, offset: number, label: Run[], color: string = COLORS.ink): void {
+  dimension(a: Pt, b: Pt, offset: number, label: Run[] | ((at: Pt) => void), color: string = COLORS.ink): void {
     const n = times(unit(perp(pt(b.x - a.x, b.y - a.y))), offset);
     const a2 = plus(a, n); const b2 = plus(b, n);
     this.line(a2, b2, { color, width: 1 });
@@ -169,7 +169,23 @@ export class Figure {
     this.line(plus(b2, tick), plus(b2, times(tick, -1)), { color, width: 1 });
     const mid = between(a2, b2, 0.5);
     const away = times(unit(n), 12);
-    this.math(plus(mid, away), label, { anchor: 'middle', color, size: 15 });
+    if (typeof label === 'function') label(plus(mid, away));
+    else this.math(plus(mid, away), label, { anchor: 'middle', color, size: 15 });
+  }
+
+  /**
+   * A radical over a short symbol, drawn as a path. The math font's radical is a
+   * stretchable glyph that sits low when set as plain SVG text.
+   */
+  radical(at: Pt, symbol: string, o: { color?: string; size?: number } = {}): void {
+    const size = o.size ?? 15;
+    const color = o.color ?? COLORS.ink;
+    const w = size * 0.72;                  // width of the radicand
+    const x = at.x - (w + size * 0.55) / 2; // centre the whole sign on `at`
+    const base = at.y + size * 0.32, top = at.y - size * 0.55;
+    this.path(`M${x},${at.y + size * 0.02} L${x + size * 0.14},${at.y - size * 0.06} L${x + size * 0.3},${base} L${x + size * 0.5},${top} L${x + size * 0.55 + w},${top}`,
+      { stroke: color, width: Math.max(0.9, size * 0.06) });
+    this.math(pt(x + size * 0.55 + w / 2, at.y + size * 0.02), [symbol], { anchor: 'middle', color, size });
   }
 
   /** Mathematical label in serif: runs control bold (vectors), italic (scalars), sub/superscripts. */
@@ -382,7 +398,7 @@ function sphereFigure(hit: HitStep): SVGSVGElement {
 
   // t = -h -/+ sqrt(delta), drawn as two measured segments along the ray.
   f.dimension(O, foot, -58, [{ t: '−', i: false }, I('h')]);
-  f.dimension(P, foot, inside ? -30 : 30, ['√', { t: 'Δ', i: false }]);
+  f.dimension(P, foot, inside ? -30 : 30, at => f.radical(at, 'Δ', { size: 15 }));
   return f.root;
 }
 

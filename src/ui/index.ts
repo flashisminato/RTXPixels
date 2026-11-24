@@ -161,12 +161,12 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   events.className = 'events';
   events.setAttribute('aria-label', 'Computed steps for the selected pixel');
   events.hidden = true;
-  const math = document.createElement('details');
+  // Chapter 3 is part of the document, not hidden behind a toggle; only the
+  // long derivations inside it use progressive disclosure.
+  const math = document.createElement('div');
   math.className = 'math';
-  const mathSummary = document.createElement('summary');
-  mathSummary.textContent = 'Explain the math';
   const mathBody = document.createElement('div');
-  math.append(mathSummary, mathBody);
+  math.append(mathBody);
   explain.append(explainTitle, modeNote, pixelLine, summary, direction, figure, events);
 
   const footer = document.createElement('footer');
