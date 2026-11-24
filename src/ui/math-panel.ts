@@ -58,19 +58,22 @@ function check(error: number | null, what: Prose): HTMLElement | null {
 
 type SectionParts = { title: string; figure?: SVGSVGElement; caption?: Prose; lead?: Prose; equations: Element[]; notes?: Array<HTMLElement | null> };
 
+/** Numbered sections and figures of the mathematics chapter: 3.1, 3.2 …; Figure 3.1 … */
 class Sections {
   private section = 0;
   private figure = 0;
   readonly nodes: HTMLElement[] = [];
 
+  constructor(private readonly chapter: string) {}
+
   add(parts: SectionParts): void {
     const box = element('section', 'math-step');
-    box.append(element('h3', null, element('span', 'math-step-no', String(++this.section)), parts.title));
+    box.append(element('h3', null, element('span', 'math-step-no', `${this.chapter}.${++this.section}`), parts.title));
     if (parts.lead) box.append(para('math-lead', ...parts.lead));
     if (parts.figure) {
       const fig = element('figure', 'math-fig');
       fig.append(parts.figure);
-      if (parts.caption) fig.append(element('figcaption', null, element('b', null, `Figure ${++this.figure}. `), ...parts.caption));
+      if (parts.caption) fig.append(element('figcaption', null, element('b', null, `Figure ${this.chapter}.${++this.figure}. `), ...parts.caption));
       box.append(fig);
     }
     const eqs = element('div', 'math-eqs');
@@ -344,7 +347,7 @@ function draw(container: HTMLElement, view: ViewState | null): void {
     `Pixel (${story.pixel.x}, ${story.pixel.y}), picture version ${story.sceneVersion}. Bold letters such as `, V('D'), ' and ', V('N'),
     ' are vectors; italic letters such as ', S('t'), ' and ', S('d'), ' are numbers. ', X(dotted(v('A'), v('B'))), ' is the dot product and ', X(norm(v('v'))), ' a length.'));
 
-  const sections = new Sections();
+  const sections = new Sections('3');
   pixelSection(sections, story);
   let reflectIndex = 0;
   story.hits.forEach((hit, i) => {

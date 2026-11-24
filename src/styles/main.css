@@ -20,14 +20,74 @@ button, input, summary, select { font: inherit; color: inherit; }
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
-/* ---- page ---------------------------------------------------------------- */
-.app { max-width: 76rem; margin: 0 auto; padding: var(--s10) var(--s6) var(--s16); }
+/* ---- page: front matter, chapter index, reading column ---------------------- */
+.app {
+  max-width: 1240px; margin: 0 auto; padding: var(--s12) var(--s6) var(--s16);
+  display: grid; grid-template-columns: var(--toc) minmax(0, 1fr); column-gap: var(--s12);
+}
+.front { grid-column: 2; max-width: var(--column); padding-bottom: var(--s8); border-bottom: 1px solid var(--ink); }
+.toc { grid-column: 1; grid-row: 1 / span 3; align-self: start; position: sticky; top: var(--s8); padding-top: var(--s2); }
+.doc { grid-column: 2; min-width: 0; }
 h1 { margin: 0 0 var(--s2); font-size: 40px; line-height: 1.15; font-weight: 650; letter-spacing: -0.02em; }
-h2 { margin: 0 0 var(--s3); font-size: 22px; line-height: 1.3; font-weight: 620; letter-spacing: -0.01em; }
 .question { margin: 0; font-size: 21px; line-height: 1.4; color: var(--graphite); font-weight: 420; }
-.lead { margin: var(--s3) 0 var(--s4); max-width: 40rem; }
-.layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(16rem, 0.9fr); gap: var(--s6) var(--s8); align-items: start; margin-top: var(--s10); }
-.picture, .controls, .explain { min-width: 0; }
+.abstract { margin: var(--s5) 0 0; max-width: 44rem; font-size: 17px; }
+
+.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--rule); }
+.toc li { margin: 0; }
+.toc a {
+  display: flex; gap: var(--s3); align-items: baseline; padding: var(--s1) 0 var(--s1) var(--s4); margin-left: -1px;
+  border-left: 1px solid transparent; color: var(--graphite); text-decoration: none; font-size: 14px; line-height: 1.4;
+}
+.toc a:hover { color: var(--ink); }
+.toc a[aria-current='true'] { color: var(--ink); border-left-color: var(--ink); font-weight: 550; }
+.toc-no { font-family: var(--font-math); font-size: 15px; min-width: 1rem; }
+
+/* Chapters: thin rules and space, never cards. */
+.chapter { padding: var(--s12) 0 var(--s4); border-top: 1px solid var(--rule); scroll-margin-top: var(--s6); }
+.chapter:first-child { border-top: 0; padding-top: var(--s10); }
+.chapter > h2 { display: flex; align-items: baseline; gap: var(--s4); margin: 0 0 var(--s4); font-size: 26px; line-height: 1.25; font-weight: 620; letter-spacing: -0.01em; }
+.chapter-no { font-family: var(--font-math); font-weight: 400; font-size: 26px; color: var(--graphite); min-width: 1.6rem; }
+.chapter > p, .chapter-lead, .lead { max-width: var(--column); }
+.lead, .chapter-lead { margin: 0 0 var(--s6); font-size: 18px; line-height: 1.55; }
+h2 { margin: 0 0 var(--s3); font-size: 22px; line-height: 1.3; font-weight: 620; }
+h3 { font-weight: 620; }
+
+/* Chapter 1: Figure 1.1 with the parameters set beside it, subordinate. */
+.stage-grid { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: var(--s8); align-items: start; }
+.fig { margin: 0; }
+.fig figcaption { margin-top: var(--s2); font-size: 14px; line-height: 1.55; color: var(--graphite); }
+.figure-label { color: var(--ink); font-weight: 600; }
+.fig figcaption .picture-help { display: inline; margin: 0; font-size: inherit; }
+.inspect-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s4) var(--s8); margin-top: var(--s5); }
+.pixel-select { display: flex; align-items: center; gap: var(--s2); border: 0; padding: 0; margin: 0; }
+.pixel-select legend { float: left; margin-right: var(--s3); padding: 0; font-size: 14px; font-weight: 600; color: var(--graphite); text-transform: uppercase; letter-spacing: 0.08em; }
+.math-symbol { font-family: var(--font-math); font-style: italic; font-size: 20px; padding: 0 var(--s1) 0 var(--s2); }
+.pixel-select input {
+  width: 5.2rem; min-height: 44px; padding: var(--s2) var(--s2); border: 1px solid var(--construction); border-radius: 2px;
+  font-family: var(--font-code); font-size: 15px; font-variant-numeric: tabular-nums; background: var(--paper);
+}
+.pixel-select input:focus-visible { border-color: var(--ink); }
+.picture-actions { margin-top: 0; }
+.controls-hint { margin: 0 0 var(--s4); font-size: 14px; color: var(--graphite); }
+
+/* Definitions: an editorial device, set off by a rule, not a box. */
+.definition { margin: var(--s6) 0; padding: var(--s1) 0 var(--s1) var(--s4); border-left: 2px solid var(--ink); max-width: var(--column); font-size: 16px; }
+.definition-label { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--graphite); margin-right: var(--s1); }
+.explain-title { margin: 0 0 var(--s2); font-size: 19px; }
+
+@media (max-width: 1199px) {
+  .app { display: block; max-width: 980px; }
+  .toc { position: static; margin: var(--s6) 0 0; padding: 0; }
+  .toc ol { display: flex; flex-wrap: wrap; gap: var(--s1) var(--s4); border-left: 0; }
+  .toc a { padding: var(--s1) 0; border-left: 0; margin: 0; gap: var(--s2); }
+  .toc-no { min-width: 0; }
+  .toc a[aria-current='true'] { border-left: 0; text-decoration: underline; text-underline-offset: 4px; }
+}
+@media (max-width: 899px) {
+  .stage-grid { grid-template-columns: minmax(0, 1fr); }
+  h1 { font-size: 32px; }
+  .chapter > h2 { font-size: 22px; }
+}
 
 /* ---- the computed picture (AI 3 inserts the canvas into .canvas-host) ------ */
 .stage-frame { position: relative; padding: 0; border: 0; margin: 0; background: var(--paper-2); box-shadow: 0 0 0 1px var(--rule); }
@@ -59,7 +119,7 @@ h2 { margin: 0 0 var(--s3); font-size: 22px; line-height: 1.3; font-weight: 620;
 .status[data-status='error'] { color: var(--signal); }
 
 /* ---- parameters ------------------------------------------------------------ */
-.controls h2 { font-size: 15px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--graphite); font-weight: 600; margin-bottom: var(--s4); }
+.controls h3 { margin: 0 0 var(--s1); font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--graphite); font-weight: 600; }
 .control { margin: 0 0 var(--s4); }
 .control-head { display: flex; justify-content: space-between; gap: var(--s3); align-items: baseline; font-size: 15px; font-weight: 500; }
 .control-value { font-family: var(--font-code); font-size: 14px; font-variant-numeric: tabular-nums; color: var(--ink); }
@@ -76,7 +136,7 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 .more-help { margin: 0 0 var(--s3); color: var(--graphite); font-size: 14px; }
 
 /* ---- following one pixel ----------------------------------------------------- */
-.explain { margin-top: var(--s16); padding-top: var(--s8); border-top: 1px solid var(--ink); }
+.explain { margin: 0; }
 .explain[data-stale='true'] { outline: 1px dashed var(--caution); outline-offset: 8px; }
 .mode-note, .pixel-line, .summary, .direction-note { margin: 0 0 var(--s3); }
 .pixel-line { font-family: var(--font-code); font-size: 14px; font-variant-numeric: tabular-nums; color: var(--graphite); }
@@ -90,9 +150,9 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 /* Step numbers in the math face, hanging in the left margin of each step. */
 .events li::before { content: counter(step); position: absolute; left: 0; top: var(--s3); font-family: var(--font-math); font-size: 19px; line-height: 1.3; color: var(--graphite); }
 .events p { margin: 0; color: var(--ink); overflow-wrap: anywhere; font-size: 16px; }
-.math { margin-top: var(--s6); }
+.math { margin-top: var(--s2); }
+.credits { margin: 0; }
 .math > summary { font-size: 17px; }
-.credits { margin-top: var(--s16); padding-top: var(--s4); border-top: 1px solid var(--rule); }
 .credits a { color: var(--ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 .credits a:hover { color: var(--graphite); }
 .limits { margin: 0 0 var(--s3); max-width: 46rem; }
@@ -122,3 +182,6 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 .math .math-paper .math-note { font-size: 15px; color: var(--graphite); }
 .math .math-paper .math-check { font-size: 14px; color: var(--verified); font-weight: 600; }
 .math .math-paper .math-check-bad { color: var(--signal); }
+
+/* Running text in chapter 2 keeps to the reading column; the figure may be wider. */
+.explain > p, .explain > h3, .events { max-width: var(--column); }
