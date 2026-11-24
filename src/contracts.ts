@@ -70,6 +70,8 @@ export type Controls = {
   /** The main light's height, depth and strength (its sideways position is lightX). */
   lightY: number; lightZ: number; lightIntensity: number;
   extraLights: LightControl[];
+  /** The back wall: an index into WALL_COLORS, and its finish (paint or mirror). */
+  wallColor: number; wallMode: Mode;
 };
 export type Action =
   | { type: 'target-x'; value: number }
@@ -81,6 +83,8 @@ export type Action =
   | { type: 'light-remove'; index: number }
   | { type: 'camera-yaw'; value: number }
   | { type: 'mirror-mode'; value: Mode }
+  | { type: 'wall-color'; value: number }
+  | { type: 'wall-mode'; value: Mode }
   | { type: 'redirects'; value: number }
   | { type: 'view-mode'; value: ViewMode }
   | { type: 'reset' };

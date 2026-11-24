@@ -1,6 +1,6 @@
 import { MAX_LIGHTS, MAX_REDIRECTS, type LightAxis, type Mode, type Vec3, type ViewMode, type ViewState } from '../contracts.ts';
 import type { UIActions, UIHandle } from '../contracts.ts';
-import { CONTROL_RANGES, EXTRA_LIGHT_TINTS } from '../scene/preset.ts';
+import { CONTROL_RANGES, EXTRA_LIGHT_TINTS, WALL_COLORS } from '../scene/preset.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
 import { renderMathPanel } from './math-panel.ts';
@@ -85,6 +85,21 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       const mode = asMode(value);
       if (!mode || current?.controls.mirrorMode === mode) return;
       actions.dispatch({ type: 'mirror-mode', value: mode });
+    });
+  // The back wall: its paint, and whether it is painted or a mirror.
+  const wallFinish = radioControl(signal, `${ns}-wall`, 'Back wall',
+    'As a mirror, the wall and the center sphere reflect each other, up to four bounces. A mirror shows what it reflects, so its color only appears when ray tracing is off.', [
+      { value: 'matte', name: 'Paint', hint: 'A flat wall in the color below.' },
+      { value: 'mirror', name: 'Mirror', hint: 'Reflects the room, and the sphere in it.' },
+    ], value => {
+      const mode = asMode(value);
+      if (!mode || current?.controls.wallMode === mode) return;
+      actions.dispatch({ type: 'wall-mode', value: mode });
+    });
+  const wallColor = swatchControl(signal, `${ns}-wallcolor`, 'Wall color',
+    WALL_COLORS.map(c => ({ name: c.name, color: cssColor(c.albedo) })), index => {
+      if (current?.controls.wallColor === index) return;
+      actions.dispatch({ type: 'wall-color', value: index });
     });
   const camera = rangeControl(signal, `${ns}-camera`, 'Move the camera',
     'This steps the camera around the scene. The center sphere does not rotate, so there is no sphere-spin control.', CONTROL_RANGES.cameraYawDeg, value => {
@@ -243,7 +258,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     event.preventDefault();
     selectTab(next, true);
   }, { signal });
-  tabPanel('object', 'Object', [target.wrap, mirror.wrap]);
+  tabPanel('object', 'Object', [target.wrap, mirror.wrap, wallFinish.wrap, wallColor.wrap]);
   tabPanel('camera', 'Camera', [camera.wrap]);
   const lightsTab = tabPanel('lights', 'Lights · 1', [lightList], lightsHelp);
   tabPanel('picture', 'Picture', [rayTracing.wrap]);
@@ -469,6 +484,8 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       syncLights(view);
       syncRange(camera.input, camera.output, view.controls.cameraYawDeg, `${Math.round(view.controls.cameraYawDeg)}°`);
       syncRadios(mirror.inputs, view.controls.mirrorMode);
+      syncRadios(wallFinish.inputs, view.controls.wallMode);
+      syncRadios(wallColor.inputs, String(view.controls.wallColor));
       syncRadios(rayTracing.inputs, view.controls.viewMode);
       const matching = view.inspection && view.inspection.sceneVersion === view.sceneVersion ? view.inspection : null;
       if (matching && matching.pixel.width > 0 && matching.pixel.height > 0) {
@@ -753,6 +770,41 @@ function restartAnimation(el: HTMLElement, className: string): void {
 
 function prefersReducedMotion(): boolean {
   return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** A row of color chips that behave as one radio group (keyboard: arrow keys). */
+function swatchControl(
+  signal: AbortSignal,
+  name: string,
+  legend: string,
+  choices: { name: string; color: string }[],
+  commit: (index: number) => void,
+): { wrap: HTMLFieldSetElement; inputs: HTMLInputElement[] } {
+  const wrap = document.createElement('fieldset');
+  wrap.className = 'swatches';
+  const caption = document.createElement('legend');
+  caption.textContent = legend;
+  const row = document.createElement('div');
+  row.className = 'swatch-row';
+  const inputs = choices.map((choice, index) => {
+    const label = document.createElement('label');
+    label.className = 'swatch';
+    label.title = choice.name;
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = name;
+    input.value = String(index);
+    input.setAttribute('aria-label', choice.name);
+    input.addEventListener('change', () => { if (input.checked) commit(index); }, { signal });
+    const chip = document.createElement('span');
+    chip.className = 'swatch-chip';
+    chip.style.background = choice.color;
+    label.append(input, chip);
+    row.append(label);
+    return input;
+  });
+  wrap.append(caption, row);
+  return { wrap, inputs };
 }
 
 function radioControl(

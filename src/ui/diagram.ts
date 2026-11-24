@@ -397,6 +397,8 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
     ...[...segments.flatMap(segment => [segment.from, segment.to]), ...marks.map(m => m.at)].filter(p => insideBox(p, ROOM_LIMIT)),
     ...lights.map(l => l.position),
     ...(camera ? [camera] : []),
+    // The back wall belongs to the room, so the frame reaches it.
+    ...(scene?.objects ?? []).flatMap(o => o.kind === 'plane' && o.normal[0] === 0 && o.normal[1] === 0 && insideBox(o.point, ROOM_LIMIT) ? [o.point] : []),
     ...spheres.flatMap(s => [0, 1, 2].flatMap(axis => [-1, 1].map(sign => {
       const p: Vec3 = [...s.center]; p[axis] += sign * s.radius; return p;
     }))),
@@ -446,6 +448,35 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
     [[xBack, box.y1, box.z0], [xBack, box.y1, box.z1]], [[xBack, 0, zFront], [xBack, box.y1, zFront]],
   ] as Array<[Vec3, Vec3]>) f.line(toScreen(a), toScreen(b), { color: FRAME, width: 0.9 });
 
+  const wallLabels: Array<{ at: Pt; runs: Run[]; color: string; size: number; candidates: Candidate[]; step?: number }> = [];
+  // The real back wall (an infinite plane facing -z), as a pane across the frame:
+  // tinted with its paint, or glassy with a few sheen lines when it is a mirror.
+  for (const wall of scene?.objects ?? []) {
+    if (wall.kind !== 'plane' || Math.abs(Math.abs(wall.normal[2]) - Math.hypot(...wall.normal)) > 1e-9) continue;
+    const z = wall.point[2];
+    if (z < box.z0 || z > box.z1 + 0.6) continue;
+    const material = scene?.materials[wall.materialIndex];
+    const mirror = material?.mode === 'mirror';
+    const corners = ([[box.x0, 0], [box.x1, 0], [box.x1, box.y1], [box.x0, box.y1]] as Array<[number, number]>)
+      .map(([x, y]) => toScreen([x, y, z]));
+    const pane = f.path(`M${corners.map(c => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' L')} Z`, {
+      stroke: mirror ? '#8aa3b5' : FRAME, width: mirror ? 1.2 : 0.9,
+      fill: mirror ? '#dfe9f1' : material ? cssColor(material.albedo) : 'none',
+    });
+    pane.setAttribute('fill-opacity', mirror ? '0.55' : '0.22');
+    titled(pane, `${wall.id === 'back-wall' ? 'back wall' : wall.id} at z = ${z}${mirror ? ', a mirror' : ''}`);
+    if (mirror) {
+      // Sheen: short diagonal strokes, the conventional sign for a reflective pane.
+      for (const t of [0.18, 0.26, 0.7]) {
+        const a = toScreen([box.x0 + (box.x1 - box.x0) * t, box.y1 * 0.82, z]);
+        const b = toScreen([box.x0 + (box.x1 - box.x0) * (t + 0.08), box.y1 * 0.55, z]);
+        f.line(a, b, { color: '#ffffff', width: 3 });
+      }
+      wallLabels.push({ at: toScreen([(box.x0 + box.x1) / 2, box.y1 * 0.92, z]), runs: ['mirror wall'], color: '#5b7487', size: 12,
+        candidates: [{ dx: 0, dy: 0, anchor: 'middle' }, { dx: 0, dy: 16, anchor: 'middle' }, { dx: 0, dy: -16, anchor: 'middle' }, ...aroundPoint(30)] });
+    }
+  }
+
   // Axes along the near frame edges: x along the front floor edge, z along the
   // near side edge, y up the front corner of the back side wall. Tick numbers sit
   // on the side away from the frame's centre.
@@ -456,13 +487,18 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
     { name: 'y', from: [xBack, 0, zFront], to: [xBack, box.y1 + 0.6, zFront], at: v => [xBack, v, zFront], values: ticks(box.y0, box.y1) },
   ];
   const labelled: Pt[] = [];
+  // Register every axis letter first, so no tick number lands on one.
+  for (const axis of axes) {
+    const a = toScreen(axis.from), b = toScreen(axis.to);
+    const d = unit(pt(b.x - a.x, b.y - a.y));
+    obstacles.boxes.push({ x0: b.x + d.x * 12 - 8, y0: b.y + d.y * 12 - 9, x1: b.x + d.x * 12 + 8, y1: b.y + d.y * 12 + 9 });
+  }
   for (const axis of axes) {
     const a = toScreen(axis.from), b = toScreen(axis.to);
     f.arrow(a, b, 'ink', 1.2);
     obstacles.segments.push([a, b]);
     const dir = unit(pt(b.x - a.x, b.y - a.y));
     f.math(plus(b, times(dir, 12)), [{ t: axis.name, i: true }], { anchor: 'middle', color: COLORS.ink, size: 16 });
-    obstacles.boxes.push({ x0: b.x + dir.x * 12 - 8, y0: b.y + dir.y * 12 - 9, x1: b.x + dir.x * 12 + 8, y1: b.y + dir.y * 12 + 9 });
     const mid = toScreen(axis.at((axis.values[0] + axis.values[axis.values.length - 1]) / 2));
     let out = unit(pt(-dir.y, dir.x));
     if ((mid.x - centre.x) * out.x + (mid.y - centre.y) * out.y < 0) out = times(out, -1);
@@ -474,10 +510,13 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
       labelled.push(label);
       f.line(q, plus(q, times(out, 4)), { color: COLORS.ink, width: 1 });
       const anchor = Math.abs(out.x) < 0.35 ? 'middle' : out.x > 0 ? 'start' : 'end';
-      f.words(label, String(v), { anchor, color: '#62666b', size: 11 });
       const w = String(v).length * 6.5;
       const x0 = anchor === 'end' ? label.x - w : anchor === 'start' ? label.x : label.x - w / 2;
-      obstacles.boxes.push({ x0, y0: label.y - 7, x1: x0 + w, y1: label.y + 7 });
+      const tickBox = { x0, y0: label.y - 7, x1: x0 + w, y1: label.y + 7 };
+      // Leave out a number that would sit on an axis letter or another number.
+      if (obstacles.boxes.some(o => tickBox.x0 < o.x1 && tickBox.x1 > o.x0 && tickBox.y0 < o.y1 && tickBox.y1 > o.y0)) continue;
+      f.words(label, String(v), { anchor, color: '#62666b', size: 11 });
+      obstacles.boxes.push(tickBox);
     }
   }
 
@@ -535,6 +574,12 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   const lightCount = lights.length;
   const shadowLabel = (segment: PlanSegment): Run[] => lightCount > 1 ? B('L', String((segment.light ?? 0) + 1)) : B('L');
 
+  // Hit points are numbered P1, P2 ... in path order; rays that start or end
+  // beyond the frame are labelled with the point they belong to.
+  const hitMarks = marks.filter(m => m.role === 'hit');
+  const hitNumber = (p: Vec3, slack = 1e-3): number => 1 + hitMarks.findIndex(m => Math.hypot(m.at[0] - p[0], m.at[1] - p[1], m.at[2] - p[2]) < slack);
+  const offFrameOrigins = new Set<number>();
+
   // Segments, back to front: miss, shadow rays, normals, then the path.
   const order: PlanSegment['role'][] = ['miss', 'shadow-open', 'shadow-blocked', 'normal', 'path'];
   const pathSegments = segments.filter(s => s.role === 'path');
@@ -562,7 +607,8 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
         if (clip.clippedB) {
           // The ray leaves the frame: an arrowhead at the edge, and where it lands.
           atStep(step, () => f.arrow(plus(clip.b, times(dir, -14)), clip.b, first ? 'ray' : 'science', 1.9));
-          pending.push({ at: clip.b, runs: [`continues to ${fmt(segment.to)}`], color: '#62666b', size: 12, step, candidates: aroundPoint(12) });
+          const n = hitNumber(segment.to);
+          pending.push({ at: clip.b, runs: [n ? `continues to P${n}, off-frame at ${fmt(segment.to)}` : `continues to ${fmt(segment.to)}`], color: '#62666b', size: 12, step, candidates: aroundPoint(12) });
         }
         if (first && clip.clippedA) {
           const near = plus(clip.a, times(dir, 26));
@@ -579,6 +625,17 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
         // screen that is no segment at all, so only the blocker mark is drawn.
         if (role === 'shadow-blocked' && Math.hypot(clip.b.x - clip.a.x, clip.b.y - clip.a.y) < 8) continue;
         const open = role === 'shadow-open';
+        if (clip.clippedA) {
+          // The check starts at a hit point beyond the frame (often after a mirror
+          // sends the ray far away): mark where it enters, and say where it is from.
+          const n = hitNumber(segment.from, 0.01);
+          atStep(step, () => f.circle(clip.a, 3.2, '#ffffff', COLORS.science, 1.3));
+          if (n && !offFrameOrigins.has(n)) {
+            offFrameOrigins.add(n);
+            const origin = hitMarks[n - 1].at;
+            pending.push({ at: clip.a, runs: [`shadow rays from P${n}, off-frame at ${fmt(origin)}`], color: '#62666b', size: 12, step, candidates: [...aroundPoint(10), ...aroundPoint(24)] });
+          }
+        }
         grow(f.line(clip.a, clip.b, { color: COLORS.science, width: 1.5, dash: open ? '6 4' : undefined, arrow: open && !clip.clippedB ? 'science' : undefined }), COLORS.science);
         if (open && clip.clippedB) {
           atStep(step, () => f.arrow(plus(clip.b, times(dir, -16)), clip.b, 'science', 1.5));
@@ -659,7 +716,7 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   }
 
   // Place labels in priority order (hit points, lights and camera, then the rest), then draw them.
-  for (const label of [...hits, ...lightLabels, ...rest]) {
+  for (const label of [...hits, ...lightLabels, ...rest, ...wallLabels]) {
     const width = label.runs.reduce((w, r) => w + (typeof r === 'string' ? r.length * 0.55 : r.t.length * (r.sub ? 0.45 : 0.7)), 0) * label.size;
     // Farther rings come last: used only when every nearby spot is taken, with a leader line.
     const chosen = placeLabel(label.at, width, label.size * 1.15, [...label.candidates, ...aroundPoint(38), ...aroundPoint(54)], obstacles, PLOT);

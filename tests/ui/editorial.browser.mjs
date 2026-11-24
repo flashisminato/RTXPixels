@@ -377,3 +377,54 @@ test('Picture tab: one Ray tracing On / Off switch changes the picture, the answ
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('Object tab: back wall color swatches and a Paint / Mirror finish drive the scene and Figure 2.1', async () => {
+  const { page, context, errors } = await open();
+  const swatches = await page.locator('.swatch input').count();
+  assert.equal(swatches, 6);
+  const v0 = await version(page);
+  await page.getByRole('radio', { name: 'brick' }).check();
+  await ready(page, v0 + 1);
+  const v1 = await version(page);
+  await page.getByRole('radio', { name: /^Mirror/ }).check();
+  await ready(page, v1 + 1);
+  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await page.waitForFunction(() => [...document.querySelectorAll('.ray-diagram svg text')].some(t => t.textContent === 'mirror wall'));
+  const v2 = await version(page);
+  await page.getByRole('radio', { name: /^Paint/ }).check();
+  await ready(page, v2 + 1);
+  assert.equal(await page.evaluate(() => [...document.querySelectorAll('.ray-diagram svg text')].some(t => t.textContent === 'mirror wall')), false);
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test('Figure 2.1 says where off-frame rays come from (mirror wall bounce), with no overlapping labels', async () => {
+  const { page, context, errors } = await open();
+  let v = await version(page);
+  await page.getByRole('radio', { name: /^Mirror/ }).check();
+  await ready(page, ++v);
+  await page.getByRole('tab', { name: /Lights/ }).click();
+  for (let i = 0; i < 3; i++) { await page.locator('.add-light').click(); await ready(page, ++v); }
+  // This pixel's camera ray hits the mirror wall and bounces to the floor ~40 units away.
+  await page.getByLabel('Pixel column x, counted from the left').fill('30');
+  await page.getByLabel('Pixel row y, counted from the top').fill('110');
+  await page.getByLabel('Pixel row y, counted from the top').press('Enter');
+  await page.waitForFunction(() => document.querySelector('pre')?.textContent?.includes('"x":30'));
+  await page.waitForTimeout(3200); // let the path finish playing
+  const r = await page.evaluate(() => {
+    const texts = [...document.querySelectorAll('.ray-diagram svg text')];
+    const boxes = texts.map(t => ({ t: t.textContent, b: t.getBBox() }));
+    const overlaps = [];
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i].b, c = boxes[j].b;
+      if (a.x < c.x + c.width && a.x + a.width > c.x && a.y < c.y + c.height && a.y + a.height > c.y) overlaps.push(`${boxes[i].t} | ${boxes[j].t}`);
+    }
+    const hits = JSON.parse(document.querySelector('pre').textContent).result.events.filter(e => e.kind === 'hit').map(e => e.hit.objectId);
+    return { hits, origin: texts.some(t => /^shadow rays from P2, off-frame at/.test(t.textContent)), overlaps };
+  });
+  assert.deepEqual(r.hits, ['back-wall', 'floor'], 'camera ray → mirror wall → far floor');
+  assert.ok(r.origin, 'the shadow rays are labelled with their off-frame origin');
+  assert.deepEqual(r.overlaps, [], 'no two labels overlap');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
