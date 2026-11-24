@@ -1,5 +1,5 @@
 import { EPS, FAR } from '../contracts.ts';
-import type { LightAxis, Scene, Vec3 } from '../contracts.ts';
+import type { Axis, LightAxis, Scene, Vec3 } from '../contracts.ts';
 import { makeCameraBasis, nearestHit, sceneLights } from '../core/index.ts';
 import {
   CANVAS_LABEL, DEFAULT_VIEW, schematicView, screenMapper, setSchematicView, towardViewer,
@@ -41,7 +41,8 @@ type Range = { min: number; max: number; step: number };
 
 /** What the figure lets the reader move, with current values and ranges. */
 export type FigureControls = {
-  target: { x: number; range: Range };
+  /** Objects that can be selected and moved with the xyz gizmo (the colored ball, added balls). */
+  objects: Array<{ id: string; x: number; y: number; z: number; ranges: Record<Axis, Range> }>;
   camera: { yawDeg: number; range: Range };
   /** Index 0 is the main light. */
   lights: Array<{ x: number; y: number; z: number }>;
@@ -50,7 +51,10 @@ export type FigureControls = {
 
 /** What the figure asks the page to do. Values are raw; the page snaps and validates them. */
 export type FigureActions = {
-  moveTarget(x: number): void;
+  /** Move a selectable object along one axis (raw value; the page snaps and validates). */
+  moveObject(id: string, axis: Axis, value: number): void;
+  /** A drag on an object starts (true) or ends (false); physics holds a held ball still. */
+  grab?(id: string, held: boolean): void;
   moveCamera(yawDeg: number): void;
   moveLight(index: number, axis: LightAxis, value: number): void;
   /** Follow the pixel at normalized top-left picture coordinates. */
@@ -72,7 +76,10 @@ type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: num
  * whole figure to fit it.
  */
 const ROOM_LIMIT: Box = { x0: -7, x1: 7, y0: 0, y1: 8, z0: -7, z1: 6 };
-type Handle = { kind: 'target' } | { kind: 'camera' } | { kind: 'light'; index: number };
+type Handle = { kind: 'object'; id: string } | { kind: 'axis'; id: string; axis: Axis } | { kind: 'camera' } | { kind: 'light'; index: number };
+
+/** The gizmo's colours, as in the usual 3D convention: x red, y green, z blue. */
+export const AXIS_COLORS: Record<Axis, string> = { x: '#d52232', y: '#21944a', z: '#2563d6' };
 type AnimItem = { el: SVGElement; step: number; grow?: { a: Pt; b: Pt }; tip?: string };
 type Rendered = { svg: SVGSVGElement; map: Mapper | null; box: Box | null; anim: AnimItem[] };
 
@@ -94,6 +101,7 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
   let current: Rendered | null = null;
   let signature = '';
   let lockedBox: Box | null = null;
+  let gestureGrabbed = false;
   let frame = 0;
   type Gesture = {
     pointer: number; startClient: ScreenPoint; startSvg: ScreenPoint; moved: boolean;
@@ -102,6 +110,8 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
     startView: { yawDeg: number; pitchDeg: number };
   };
   let gesture: Gesture | null = null;
+  /** The object whose xyz gizmo is showing (clicked in the figure), if any. */
+  let selected: string | null = null;
 
   host.tabIndex = 0;
   host.setAttribute('role', 'group');
@@ -117,7 +127,9 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
   const handleOf = (target: EventTarget | null): Handle | null => {
     const el = target instanceof Element ? target.closest('[data-drag]') : null;
     const kind = el?.getAttribute('data-drag');
-    if (kind === 'target' || kind === 'camera') return { kind };
+    if (kind === 'camera') return { kind };
+    if (kind?.startsWith('object:')) return { kind: 'object', id: kind.slice(7) };
+    if (kind?.startsWith('axis-')) return { kind: 'axis', axis: kind[5] as Axis, id: kind.slice(7) };
     if (kind?.startsWith('light-')) return { kind: 'light', index: Number(kind.slice(6)) };
     return null;
   };
@@ -126,7 +138,8 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
     cancelAnimationFrame(frame);
     const focused = document.activeElement instanceof Element && host.contains(document.activeElement)
       ? document.activeElement.getAttribute('data-drag') : null;
-    current = render(args.plan, args.message, args.scene, actions ? args.controls : null, lockedBox);
+    if (selected && !args.controls?.objects.some(o => o.id === selected)) selected = null;
+    current = render(args.plan, args.message, args.scene, actions ? args.controls : null, lockedBox, selected);
     host.replaceChildren(current.svg);
     if (focused) host.querySelector<SVGElement>(`[data-drag="${focused}"]`)?.focus({ preventScroll: true });
     if (animate && !reducedMotion()) play(current.anim);
@@ -203,6 +216,8 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
     const handle = handleOf(e.target);
     const controls = args.controls;
     const light = handle?.kind === 'light' ? controls?.lights[handle.index] : undefined;
+    const object = handle?.kind === 'object' || handle?.kind === 'axis' ? controls?.objects.find(o => o.id === handle.id) : undefined;
+    const at = light ?? object;
     const camera = args.scene?.camera;
     // The camera orbits its target: the screen image of d(position)/d(yaw), per degree.
     let tangent: ScreenPoint | null = null;
@@ -214,10 +229,7 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
     }
     gesture = {
       pointer: e.pointerId, startClient: { x: e.clientX, y: e.clientY }, startSvg: start, moved: false, handle,
-      startValues: {
-        x: handle?.kind === 'target' ? controls?.target.x ?? 0 : light?.x ?? 0,
-        y: light?.y ?? 0, z: light?.z ?? 0, yaw: controls?.camera.yawDeg ?? 0,
-      },
+      startValues: { x: at?.x ?? 0, y: at?.y ?? 0, z: at?.z ?? 0, yaw: controls?.camera.yawDeg ?? 0 },
       columns: linearColumns(current.map), tangent, startView: schematicView(),
     };
     // Keep the frame still while something moves, so the drag maps 1:1.
@@ -241,8 +253,17 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
       // Turn the view: sideways spins it around the vertical, up and down tilts it.
       setSchematicView(gesture.startView.yawDeg - delta.x * 0.2, gesture.startView.pitchDeg + delta.y * 0.15);
       redraw();
-    } else if (h.kind === 'target') {
-      actions.moveTarget(gesture.startValues.x + worldDeltaAlong(delta, cx));
+    } else if (h.kind === 'axis') {
+      // A gizmo arrow: move along that one axis only.
+      const column = h.axis === 'x' ? cx : h.axis === 'y' ? cy : cz;
+      if (!gestureGrabbed) { actions.grab?.(h.id, true); gestureGrabbed = true; }
+      actions.moveObject(h.id, h.axis, gesture.startValues[h.axis] + worldDeltaAlong(delta, column));
+    } else if (h.kind === 'object') {
+      // The object itself slides across the floor plane (x and z).
+      if (!gestureGrabbed) { actions.grab?.(h.id, true); gestureGrabbed = true; }
+      const [dx, dz] = worldDeltaPair(delta, cx, cz);
+      actions.moveObject(h.id, 'x', gesture.startValues.x + dx);
+      actions.moveObject(h.id, 'z', gesture.startValues.z + dz);
     } else if (h.kind === 'camera' && gesture.tangent) {
       actions.moveCamera(gesture.startValues.yaw + worldDeltaAlong(delta, gesture.tangent));
     } else if (h.kind === 'light') {
@@ -262,8 +283,15 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
     lockedBox = null;
     host.releasePointerCapture?.(e.pointerId);
     host.classList.remove('is-dragging');
-    if (!g.moved && e.type === 'pointerup') pick(g.startSvg);
-    else redraw();
+    if (gestureGrabbed && g.handle && (g.handle.kind === 'object' || g.handle.kind === 'axis')) actions?.grab?.(g.handle.id, false);
+    gestureGrabbed = false;
+    if (!g.moved && e.type === 'pointerup') {
+      // A click on a movable object selects it (its gizmo appears); a click on an
+      // arrow keeps the selection; anywhere else follows that spot's pixel.
+      if (g.handle?.kind === 'object') { selected = selected === g.handle.id ? null : g.handle.id; redraw(); }
+      else if (g.handle?.kind === 'axis') redraw();
+      else { selected = null; pick(g.startSvg); }
+    } else redraw();
   };
 
   /** Follow the pixel whose camera ray looks toward the surface point under the click. */
@@ -295,14 +323,33 @@ export function createDiagram(host: HTMLElement, actions?: FigureActions): {
       return;
     }
     if (!controls) return;
-    if (h.kind === 'target' || h.kind === 'camera') {
-      const r = h.kind === 'target' ? controls.target.range : controls.camera.range;
-      const now = h.kind === 'target' ? controls.target.x : controls.camera.yawDeg;
+    if (h.kind === 'camera') {
+      const r = controls.camera.range;
+      const now = controls.camera.yawDeg;
       const next = dir ? now + dir * r.step : e.key === 'Home' ? r.min : e.key === 'End' ? r.max : null;
       if (next === null) return;
       e.preventDefault();
-      const clamped = Math.min(r.max, Math.max(r.min, next));
-      if (h.kind === 'target') actions.moveTarget(clamped); else actions.moveCamera(clamped);
+      actions.moveCamera(Math.min(r.max, Math.max(r.min, next)));
+      return;
+    }
+    if (h.kind === 'object' || h.kind === 'axis') {
+      const object = controls.objects.find(o => o.id === h.id);
+      if (!object) return;
+      if (h.kind === 'object' && (e.key === 'Enter' || e.key === ' ')) {
+        e.preventDefault();
+        selected = selected === h.id ? null : h.id;
+        redraw();
+        return;
+      }
+      // On the object: left/right = x, up/down = z, Page Up/Down = y. On an arrow: that axis.
+      const axis: Axis | null = h.kind === 'axis' ? (dir || e.key === 'PageUp' || e.key === 'PageDown' ? h.axis : null)
+        : e.key === 'ArrowLeft' || e.key === 'ArrowRight' ? 'x' : e.key === 'ArrowUp' || e.key === 'ArrowDown' ? 'z'
+          : e.key === 'PageUp' || e.key === 'PageDown' ? 'y' : null;
+      if (!axis) return;
+      e.preventDefault();
+      const r = object.ranges[axis];
+      const sign = e.key === 'PageDown' ? -1 : e.key === 'PageUp' ? 1 : dir;
+      actions.moveObject(h.id, axis, Math.min(r.max, Math.max(r.min, object[axis] + sign * r.step)));
       return;
     }
     const light = controls.lights[h.index];
@@ -376,7 +423,7 @@ function titled(el: Element, text: string): void {
 const B = (t: string, sub?: string): Run[] => sub ? [{ t, b: true }, { t: sub, sub: true }] : [{ t, b: true }];
 const fmt = (p: Vec3): string => `(${p.map(c => c.toFixed(2)).join(', ')})`;
 
-function render(plan: DiagramPlan | null, message: string, scene: Scene | null, controls: FigureControls | null, lockedBox: Box | null): Rendered {
+function render(plan: DiagramPlan | null, message: string, scene: Scene | null, controls: FigureControls | null, lockedBox: Box | null, selected: string | null = null): Rendered {
   const f = new Figure(W, H, `${plan?.canvasLabel ?? CANVAS_LABEL} ${message}`);
   const layer = f.root.lastElementChild as SVGGElement;
   const empty = (): Rendered => {
@@ -554,9 +601,10 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
       f.add(rim);
     };
     const group = f.ref(`globe-${sphere.id}`, draw);
-    titled(group, `${sphere.id === 'mirror' ? 'center sphere' : sphere.id === 'target' ? 'colored object' : sphere.id}: center ${fmt(sphere.center)}, radius ${sphere.radius.toFixed(2)}`);
-    if (controls && sphere.id === 'target') {
-      makeHandle(group, 'target', 'Colored object: drag sideways or use the arrow keys', `x = ${controls.target.x.toFixed(2)}`);
+    titled(group, `${sphereName(sphere.id)}: center ${fmt(sphere.center)}, radius ${sphere.radius.toFixed(2)}`);
+    if (controls?.objects.some(o => o.id === sphere.id)) {
+      makeHandle(group, `object:${sphere.id}`, `${sphereName(sphere.id)}: click to show the x, y and z arrows; drag to slide it across the floor; arrow keys move it`, fmt(sphere.center));
+      group.setAttribute('aria-pressed', String(selected === sphere.id));
     }
     obstacles.ellipses.push(e);
   }
@@ -708,11 +756,36 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
 
   // Sphere names, outside their outlines.
   for (const { sphere, e } of outlines) {
-    const name = sphere.id === 'mirror' ? 'center sphere' : sphere.id === 'target' ? 'colored object' : sphere.id;
+    const name = sphereName(sphere.id);
     const r = Math.max(e.rx, e.ry);
     rest.push({ at: pt(e.cx, e.cy), runs: [name], color: '#62666b', size: 13, candidates: [
       { dx: 0, dy: -r - 12, anchor: 'middle' }, { dx: r + 10, dy: -r * 0.55, anchor: 'start' }, { dx: -r - 10, dy: -r * 0.55, anchor: 'end' },
       { dx: 0, dy: r + 14, anchor: 'middle' }, { dx: r + 10, dy: r * 0.55, anchor: 'start' }, { dx: -r - 10, dy: r * 0.55, anchor: 'end' }] });
+  }
+
+  // ---- The xyz gizmo on the selected object: three arrows from its centre, red x,
+  // green y, blue z, each a handle that moves the object along that axis only.
+  const chosen = selected ? spheres.find(s => s.id === selected) : undefined;
+  if (chosen && controls) {
+    const c = toScreen(chosen.center);
+    const length = chosen.radius + 0.75;
+    for (const axis of ['x', 'y', 'z'] as const) {
+      const tip: Vec3 = [...chosen.center];
+      tip[axis === 'x' ? 0 : axis === 'y' ? 1 : 2] += length;
+      const t = toScreen(tip);
+      const d = unit(pt(t.x - c.x, t.y - c.y));
+      const color = AXIS_COLORS[axis];
+      const arrow = f.ref(`gizmo-${axis}`, () => {
+        f.line(c, t, { color: 'transparent', width: 16 }); // a generous grab area
+        f.line(c, plus(t, times(d, -9)), { color, width: 4 });
+        const n = pt(-d.y, d.x);
+        f.path(`M${t.x},${t.y} L${t.x - d.x * 13 + n.x * 6},${t.y - d.y * 13 + n.y * 6} L${t.x - d.x * 13 - n.x * 6},${t.y - d.y * 13 - n.y * 6} Z`, { stroke: color, fill: color, width: 1 });
+        f.math(plus(t, times(d, 12)), [{ t: axis, i: true }], { anchor: 'middle', color, size: 16 });
+      });
+      makeHandle(arrow, `axis-${axis}:${chosen.id}`, `Move the ${sphereName(chosen.id)} along ${axis}: drag the arrow or use the arrow keys`, `${axis} = ${chosen.center[axis === 'x' ? 0 : axis === 'y' ? 1 : 2].toFixed(2)}`);
+      obstacles.segments.push([c, t]);
+      obstacles.boxes.push({ x0: t.x + d.x * 12 - 8, y0: t.y + d.y * 12 - 9, x1: t.x + d.x * 12 + 8, y1: t.y + d.y * 12 + 9 });
+    }
   }
 
   // Place labels in priority order (hit points, lights and camera, then the rest), then draw them.
@@ -738,6 +811,14 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   // Before a pixel is chosen, say so in the corner; the room is already there to play with.
   if (!plan) f.words(pt(PLOT.x0 + 8, PLOT.y0 + 14), message, { anchor: 'start', color: '#62666b', size: 14 });
   return { svg: f.root, map, box, anim };
+}
+
+/** Reader-facing names for the room's spheres. */
+function sphereName(id: string): string {
+  if (id === 'mirror') return 'center sphere';
+  if (id === 'target') return 'colored object';
+  const ball = /^ball-(\d+)$/.exec(id);
+  return ball ? `Ball ${ball[1]}` : id;
 }
 
 const GRID = '#e6e6e1';

@@ -1,6 +1,6 @@
 import { MAX_LIGHTS, MAX_MATERIALS, MAX_OBJECTS, MAX_REDIRECTS } from '../contracts.ts';
 import type { Controls, Scene } from '../contracts.ts';
-import { CONTROL_RANGES, EXTRA_LIGHT_TINTS, WALL_COLORS } from '../scene/preset.ts';
+import { BALL_BOUNDS, BALL_COLORS, CONTROL_RANGES, EXTRA_LIGHT_TINTS, MAX_BALLS, WALL_COLORS, targetPositionIsFree } from '../scene/preset.ts';
 
 function record(value: unknown, name: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${name} must be an object.`);
@@ -22,6 +22,21 @@ export function validateControls(value: unknown): asserts value is Controls {
   if (controls.wallMode !== 'matte' && controls.wallMode !== 'mirror') throw new RangeError('Unsupported wall finish.');
   finiteRange(controls.wallColor, 0, WALL_COLORS.length - 1, 'Wall color');
   if (!Number.isInteger(controls.wallColor)) throw new RangeError('Wall color must be an integer.');
+  if (!targetPositionIsFree([controls.targetX as number, controls.targetY as number, controls.targetZ as number])) throw new RangeError('The colored ball cannot overlap the mirror ball.');
+  if (!Array.isArray(controls.balls) || controls.balls.length > MAX_BALLS) throw new RangeError(`At most ${MAX_BALLS} added balls are supported.`);
+  const labels = new Set<number>();
+  for (const entry of controls.balls) {
+    const ball = record(entry, 'Ball');
+    finiteRange(ball.n, 1, MAX_BALLS, 'Ball label');
+    if (!Number.isInteger(ball.n) || labels.has(ball.n)) throw new RangeError('Ball labels must be unique integers.');
+    labels.add(ball.n);
+    finiteRange(ball.x, BALL_BOUNDS.x.min, BALL_BOUNDS.x.max, 'Ball x');
+    finiteRange(ball.y, BALL_BOUNDS.y.min, BALL_BOUNDS.y.max, 'Ball y');
+    finiteRange(ball.z, BALL_BOUNDS.z.min, BALL_BOUNDS.z.max, 'Ball z');
+    finiteRange(ball.color, 0, BALL_COLORS.length - 1, 'Ball color');
+    if (!Number.isInteger(ball.color)) throw new RangeError('Ball color must be an integer.');
+    if (ball.mode !== 'matte' && ball.mode !== 'mirror') throw new RangeError('Unsupported ball finish.');
+  }
   if (controls.viewMode !== 'beauty' && controls.viewMode !== 'raster' && controls.viewMode !== 'hit' && controls.viewMode !== 'albedo') throw new RangeError('Unsupported view mode.');
   finiteRange(controls.maxRedirects, 0, MAX_REDIRECTS, 'Redirect budget');
   if (!Number.isInteger(controls.maxRedirects)) throw new RangeError('Redirect budget must be an integer.');

@@ -19,7 +19,7 @@ export function checkGPUParity() {
   try {
     const extension = renderer.gl.getExtension('WEBGL_debug_renderer_info');
     const backend = extension ? String(renderer.gl.getParameter(extension.UNMASKED_RENDERER_WEBGL)) : 'unavailable';
-    for (let scenario = 0; scenario < 5; scenario++) {
+    for (let scenario = 0; scenario < 6; scenario++) {
       if (scenario === 1) store.dispatch({ type: 'light-x', value: 4 });
       if (scenario === 2) {
         store.dispatch({ type: 'target-x', value: -2.8 });
@@ -40,6 +40,14 @@ export function checkGPUParity() {
         store.dispatch({ type: 'wall-mode', value: 'mirror' });
         store.dispatch({ type: 'wall-color', value: 2 });
         store.dispatch({ type: 'camera-yaw', value: -25 });
+      }
+      if (scenario === 5) {
+        // Six spheres: four added balls (one a mirror), resting where physics would put them.
+        store.dispatch({ type: 'reset' });
+        for (let i = 0; i < 4; i++) store.dispatch({ type: 'ball-add' });
+        store.dispatch({ type: 'ball-mode', index: 1, value: 'mirror' });
+        store.dispatch({ type: 'balls-step', positions: [[1.9, 0.45, -1.6], [-1.0, 0.45, -2.2], [2.8, 0.45, 0.6], [-2.9, 0.45, 2.4]] });
+        store.dispatch({ type: 'target-move', axis: 'y', value: 1.1 });
       }
       for (const [cssWidth, cssHeight] of [[320, 180], [240, 240], [333, 187]]) {
         canvas.style.width = `${cssWidth}px`;

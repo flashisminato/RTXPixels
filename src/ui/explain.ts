@@ -90,6 +90,8 @@ export function objectName(id: string | null): string {
   if (id === 'floor') return 'floor';
   if (id === 'back-wall') return 'back wall';
   if (!id) return 'an object';
+  const ball = /^ball-(\d+)$/.exec(id);
+  if (ball) return `ball ${ball[1]}`;
   return id;
 }
 
@@ -256,6 +258,9 @@ function summarize(events: TraceEvent[], redirects: number): string {
   const hits = events.filter((event): event is Extract<TraceEvent, { kind: 'hit' }> => event.kind === 'hit');
   const end = events.findLast((event): event is Extract<TraceEvent, { kind: 'end' }> => event.kind === 'end');
   if (!end) return 'These are the computed steps for this pixel, in order.';
+  if (end.reason === 'sky' && hits.length > 0) {
+    return `The camera ray reaches the ${objectName(hits[0].hit.objectId)}, bounces, and the bounced ray escapes to the sky, so the pixel shows the reflected sky color.`;
+  }
   if (end.reason === 'sky') return 'The ray misses every object. The pixel is a computed sky color. That is a miss, not an error, and no surface is invented here.';
   if (end.reason === 'budget') {
     const where = hits.length > 0 ? `the ${objectName(hits[hits.length - 1].hit.objectId)}` : 'the mirror';

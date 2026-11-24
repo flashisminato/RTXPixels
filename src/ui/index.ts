@@ -1,6 +1,7 @@
-import { MAX_LIGHTS, MAX_REDIRECTS, type LightAxis, type Mode, type Vec3, type ViewMode, type ViewState } from '../contracts.ts';
+import { MAX_LIGHTS, MAX_REDIRECTS, type Axis, type LightAxis, type Mode, type Vec3, type ViewMode, type ViewState } from '../contracts.ts';
 import type { UIActions, UIHandle } from '../contracts.ts';
-import { CONTROL_RANGES, EXTRA_LIGHT_TINTS, WALL_COLORS } from '../scene/preset.ts';
+import { BALL_BOUNDS, BALL_COLORS, CONTROL_RANGES, EXTRA_LIGHT_TINTS, MAX_BALLS, WALL_COLORS, targetPositionIsFree } from '../scene/preset.ts';
+import { createPhysicsDriver } from './physics-driver.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
 import { renderMathPanel } from './math-panel.ts';
@@ -73,10 +74,36 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   controls.setAttribute('aria-label', 'Parameters');
   const controlsTitle = document.createElement('h3');
   controlsTitle.textContent = 'Parameters';
-  const target = rangeControl(signal, `${ns}-target`, 'Move the colored object',
-    '', CONTROL_RANGES.targetX, value => {
-      commitNumber(value, CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
+  // The colored ball moves along x, y and z, coloured like the gizmo's arrows.
+  const targetRanges = { x: CONTROL_RANGES.targetX, y: CONTROL_RANGES.targetY, z: CONTROL_RANGES.targetZ } as const;
+  const targetValue = (axis: Axis): number | undefined =>
+    current ? (axis === 'x' ? current.controls.targetX : axis === 'y' ? current.controls.targetY : current.controls.targetZ) : undefined;
+  /** Move the colored ball along one axis, unless that would put it inside the mirror ball. */
+  const moveTarget = (axis: Axis, value: number): void => {
+    if (!current) return;
+    const range = targetRanges[axis];
+    commitNumber(Math.min(range.max, Math.max(range.min, value)), range, targetValue(axis), snapped => {
+      const next: Vec3 = [current!.controls.targetX, current!.controls.targetY, current!.controls.targetZ];
+      next[axis === 'x' ? 0 : axis === 'y' ? 1 : 2] = snapped;
+      if (targetPositionIsFree(next)) actions.dispatch({ type: 'target-move', axis, value: snapped });
     });
+  };
+  const target = document.createElement('fieldset');
+  target.className = 'xyz';
+  const targetLegend = document.createElement('legend');
+  targetLegend.textContent = 'Move the colored object';
+  target.append(targetLegend);
+  const targetAxes = (['x', 'y', 'z'] as const).map(axis => {
+    const control = compactRange(signal, `${ns}-target-${axis}`, `${axis}${axis === 'y' ? ' (height)' : axis === 'z' ? ' (depth)' : ' (sideways)'}`, targetRanges[axis], value => moveTarget(axis, value));
+    control.wrap.classList.add(`axis-${axis}`);
+    target.append(control.wrap);
+    return control;
+  });
+  const targetHint = document.createElement('p');
+  targetHint.className = 'control-help';
+  targetHint.textContent = 'Or click it in Figure 2.1 and drag the red, green or blue arrow.';
+  target.append(targetHint);
+  const targetWrap = { wrap: target };
   const mirror = radioControl(signal, `${ns}-mirror`, 'Center sphere',
     'Switching to flat color stops the reflection. The sphere does not rotate.', [
       { value: 'mirror', name: 'Shiny mirror', hint: 'Shows a reflection.' },
@@ -207,6 +234,73 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     });
   }
 
+  // ---- Balls: up to MAX_BALLS added balls, each with its own paint and finish.
+  // They drop in from the air (see physics-driver.ts) and can be moved in Figure 2.1.
+  const ballsHelp = document.createElement('p');
+  ballsHelp.className = 'panel-help';
+  ballsHelp.textContent = `Add up to ${MAX_BALLS} balls. Each drops in from the air, bounces and settles. Give it a color, or make it a mirror. Click a ball in Figure 2.1 to move it with the x, y and z arrows.`;
+  const ballList = document.createElement('div');
+  ballList.className = 'light-list ball-list';
+  const addBall = document.createElement('button');
+  addBall.type = 'button';
+  addBall.className = 'add-ball';
+  addBall.textContent = '+ Add a ball';
+  addBall.addEventListener('click', () => {
+    if ((current?.controls.balls.length ?? 0) < MAX_BALLS) actions.dispatch({ type: 'ball-add' });
+  }, { signal });
+  type BallCard = { finish: HTMLInputElement[]; colors: HTMLInputElement[] };
+  let ballCards: BallCard[] = [];
+  let ballLayout = '';
+  let ballCardsLifecycle: AbortController | null = null;
+  function syncBalls(view: ViewState): void {
+    const layout = view.controls.balls.map(b => b.n).join(',');
+    if (layout !== ballLayout || (ballCards.length === 0 && view.controls.balls.length > 0)) {
+      ballLayout = layout;
+      ballCardsLifecycle?.abort();
+      ballCardsLifecycle = new AbortController();
+      const cardSignal = AbortSignal.any([signal, ballCardsLifecycle.signal]);
+      ballList.replaceChildren();
+      ballCards = view.controls.balls.map((ball, index) => {
+        const card = document.createElement('fieldset');
+        card.className = 'light-card ball-card';
+        const legend = document.createElement('legend');
+        legend.textContent = `Ball ${ball.n}`;
+        card.append(legend);
+        const finish = radioControl(cardSignal, `${ns}-ball${ball.n}-finish`, 'Finish', '', [
+          { value: 'matte', name: 'Paint', hint: '' },
+          { value: 'mirror', name: 'Mirror', hint: '' },
+        ], value => {
+          const mode = asMode(value);
+          if (mode && current?.controls.balls[index]?.mode !== mode) actions.dispatch({ type: 'ball-mode', index, value: mode });
+        });
+        finish.wrap.querySelector('.control-help')?.remove();
+        finish.wrap.classList.add('compact-choices');
+        const colors = swatchControl(cardSignal, `${ns}-ball${ball.n}-color`, 'Color',
+          BALL_COLORS.map(c => ({ name: `Ball ${ball.n} ${c.name}`, color: cssColor(c.albedo) })), color => {
+            if (current?.controls.balls[index]?.color !== color) actions.dispatch({ type: 'ball-color', index, value: color });
+          });
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'button button-secondary remove-light';
+        remove.textContent = `Remove ball ${ball.n}`;
+        remove.addEventListener('click', () => actions.dispatch({ type: 'ball-remove', index }), { signal: cardSignal });
+        card.append(colors.wrap, finish.wrap, remove);
+        ballList.append(card);
+        return { finish: finish.inputs, colors: colors.inputs };
+      });
+      ballList.append(addBall);
+    }
+    const count = view.controls.balls.length;
+    ballsTab.textContent = `Balls · ${count}`;
+    addBall.disabled = count >= MAX_BALLS;
+    addBall.textContent = count >= MAX_BALLS ? `All ${MAX_BALLS} balls are in the room` : '+ Add a ball';
+    view.controls.balls.forEach((ball, i) => {
+      if (!ballCards[i]) return;
+      syncRadios(ballCards[i].finish, ball.mode);
+      syncRadios(ballCards[i].colors, String(ball.color));
+    });
+  }
+
   // ---- Parameters as a full-width tabbed panel under the picture. Each tab lays its
   // controls out across the width instead of stacking every option in one column.
   // DOM order of the range inputs stays: object x, camera, main light x, ...
@@ -258,9 +352,11 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     event.preventDefault();
     selectTab(next, true);
   }, { signal });
-  tabPanel('object', 'Object', [target.wrap, mirror.wrap, wallFinish.wrap, wallColor.wrap]);
+  tabPanel('object', 'Object', [targetWrap.wrap, mirror.wrap, wallFinish.wrap, wallColor.wrap]);
   tabPanel('camera', 'Camera', [camera.wrap]);
   const lightsTab = tabPanel('lights', 'Lights · 1', [lightList], lightsHelp);
+  const ballsTab = tabPanel('balls', 'Balls · 0', [ballList], ballsHelp);
+  ballList.append(addBall);
   tabPanel('picture', 'Picture', [rayTracing.wrap]);
   selectTab(0);
   const controlsHead = document.createElement('div');
@@ -366,9 +462,23 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   // ranges as the sliders, so the picture, the answer and the math follow.
   const clampTo = (value: number, range: { min: number; max: number }) => Math.min(range.max, Math.max(range.min, value));
   const lightRange = { x: CONTROL_RANGES.lightX, y: CONTROL_RANGES.lightY, z: CONTROL_RANGES.lightZ } as const;
+  const ballRanges = {
+    x: { ...BALL_BOUNDS.x, step: 0.05 }, y: { ...BALL_BOUNDS.y, step: 0.05 }, z: { ...BALL_BOUNDS.z, step: 0.05 },
+  } as const;
+  // Balls fall, bounce and settle; the driver runs only while something moves.
+  const physics = createPhysicsDriver(action => actions.dispatch(action), prefersReducedMotion);
+  const ballIndexOf = (id: string): number => current ? current.controls.balls.findIndex(b => `ball-${b.n}` === id) : -1;
   const diagram = createDiagram(diagramHost, {
-    moveTarget(x) {
-      commitNumber(clampTo(x, CONTROL_RANGES.targetX), CONTROL_RANGES.targetX, current?.controls.targetX, snapped => actions.dispatch({ type: 'target-x', value: snapped }));
+    moveObject(id, axis, value) {
+      if (id === 'target') { moveTarget(axis, value); return; }
+      const index = ballIndexOf(id);
+      if (index < 0 || !current) return;
+      const range = ballRanges[axis];
+      commitNumber(clampTo(value, range), range, current.controls.balls[index][axis], snapped => actions.dispatch({ type: 'ball-move', index, axis, value: snapped }));
+    },
+    grab(id, held) {
+      const ball = current?.controls.balls[ballIndexOf(id)];
+      if (ball) physics.hold(ball.n, held);
     },
     moveCamera(yaw) {
       commitNumber(clampTo(yaw, CONTROL_RANGES.cameraYawDeg), CONTROL_RANGES.cameraYawDeg, current?.controls.cameraYawDeg, snapped => actions.dispatch({ type: 'camera-yaw', value: snapped }));
@@ -480,13 +590,22 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       status.textContent = `${view.status}: ${view.message}`;
       status.dataset.status = view.status;
       record.textContent = view.inspection ? JSON.stringify(view.inspection) : '';
-      syncRange(target.input, target.output, view.controls.targetX, view.controls.targetX.toFixed(2));
+      (['x', 'y', 'z'] as const).forEach((axis, i) => {
+        const value = axis === 'x' ? view.controls.targetX : axis === 'y' ? view.controls.targetY : view.controls.targetZ;
+        syncRange(targetAxes[i].input, targetAxes[i].output, value, value.toFixed(2));
+      });
       syncLights(view);
+      syncBalls(view);
+      physics.sync(view);
       syncRange(camera.input, camera.output, view.controls.cameraYawDeg, `${Math.round(view.controls.cameraYawDeg)}°`);
       syncRadios(mirror.inputs, view.controls.mirrorMode);
       syncRadios(wallFinish.inputs, view.controls.wallMode);
       syncRadios(wallColor.inputs, String(view.controls.wallColor));
       syncRadios(rayTracing.inputs, view.controls.viewMode);
+      // While a changed scene is being recomputed (each physics frame, each drag
+      // step), keep the selected pixel and its last explanation on screen instead
+      // of flashing back to "pick a pixel" for one frame.
+      if (!view.inspection && selection && view.status === 'starting') return;
       const matching = view.inspection && view.inspection.sceneVersion === view.sceneVersion ? view.inspection : null;
       if (matching && matching.pixel.width > 0 && matching.pixel.height > 0) {
         pixelSize = { width: matching.pixel.width, height: matching.pixel.height };
@@ -527,7 +646,10 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       if (animate) restartAnimation(marker, 'is-new');
       replay.style.visibility = !explanation.diagram || prefersReducedMotion() ? 'hidden' : 'visible';
       diagram.show(explanation.diagram, explanation.summary, view.scene, {
-        target: { x: view.controls.targetX, range: CONTROL_RANGES.targetX },
+        objects: [
+          { id: 'target', x: view.controls.targetX, y: view.controls.targetY, z: view.controls.targetZ, ranges: targetRanges },
+          ...view.controls.balls.map(b => ({ id: `ball-${b.n}`, x: b.x, y: b.y, z: b.z, ranges: ballRanges })),
+        ],
         camera: { yawDeg: view.controls.cameraYawDeg, range: CONTROL_RANGES.cameraYawDeg },
         lights: [0, ...view.controls.extraLights.map((_, i) => i + 1)].map(i => {
           const l = lightValues(view, i);
@@ -542,6 +664,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       lifecycle.abort();
       hostObserver.disconnect();
       toc.dispose();
+      physics.dispose();
       diagram.dispose();
       root.replaceChildren();
     },

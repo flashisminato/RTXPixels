@@ -179,10 +179,12 @@ test('Figure 3.1: drag the pixel in the image-space grid, or step it with the ar
 test('Figure 2.1: drag the colored object and the light; keyboard steps them', async () => {
   const { page, context, errors } = await open();
   await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
-  const target = page.locator('[data-drag="target"]');
+  const target = page.locator('[data-drag="object:target"]');
   await target.waitFor();
   await target.scrollIntoViewIfNeeded();
-  const [targetX0, , lightX0] = await controls(page); // range inputs in DOM order: object x, camera, light, bounces
+  const value = id => page.locator(`input[id$="${id}"]`).evaluate(i => Number(i.value));
+  const targetX0 = await value('-target-x');
+  const lightX0 = await value('-light0-x');
   const v0 = await version(page);
   const tb = await target.boundingBox();
   await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
@@ -190,14 +192,14 @@ test('Figure 2.1: drag the colored object and the light; keyboard steps them', a
   await page.mouse.move(tb.x + tb.width / 2 + 60, tb.y + tb.height / 2, { steps: 8 });
   await page.mouse.up();
   await ready(page, v0 + 1);
-  const [targetX1] = await controls(page);
+  const targetX1 = await value('-target-x');
   assert.ok(targetX1 > targetX0, `dragging right moves the object toward +x: ${targetX0} -> ${targetX1}`);
   // Keyboard on the handle: exactly one control step (0.05).
-  await page.locator('[data-drag="target"]').focus();
+  await page.locator('[data-drag="object:target"]').focus();
   const v1 = await version(page);
   await page.keyboard.press('ArrowLeft');
   await ready(page, v1 + 1);
-  const [targetX2] = await controls(page);
+  const targetX2 = await value('-target-x');
   assert.ok(Math.abs(targetX2 - (targetX1 - 0.05)) < 1e-9, `ArrowLeft steps by 0.05: ${targetX1} -> ${targetX2}`);
   // The light, if drawn inside the figure, is a handle too.
   const light = page.locator('[data-drag="light-0"]');
@@ -206,9 +208,9 @@ test('Figure 2.1: drag the colored object and the light; keyboard steps them', a
     const v2 = await version(page);
     await page.keyboard.press('ArrowRight');
     await ready(page, v2 + 1);
-    const values = await controls(page);
+    const lightX1 = await value('-light0-x');
     const expected = Math.min(4, lightX0 + 0.1);
-    assert.ok(Math.abs(values[2] - expected) < 1e-9, `light ArrowRight steps by 0.1 (clamped at 4): ${lightX0} -> ${values[2]}`);
+    assert.ok(Math.abs(lightX1 - expected) < 1e-9, `light ArrowRight steps by 0.1 (clamped at 4): ${lightX0} -> ${lightX1}`);
   }
   assert.deepEqual(errors, []);
   await context.close();
@@ -258,7 +260,7 @@ test('Figure 2.1 instrument: the room shows before a pick; camera and every ligh
   await page.locator('.add-light').click();
   await ready(page, 2);
   const handles = await page.evaluate(() => [...document.querySelectorAll('.ray-diagram [data-drag]')].map(e => e.getAttribute('data-drag')));
-  assert.deepEqual(handles.sort(), ['camera', 'light-0', 'light-1', 'target'], 'room drawn and draggable before any pixel is picked');
+  assert.deepEqual(handles.sort(), ['camera', 'light-0', 'light-1', 'object:target'], 'room drawn and draggable before any pixel is picked');
 
   // Keyboard on the camera handle orbits it one degree per press.
   const v0 = await version(page);
@@ -276,13 +278,13 @@ test('Figure 2.1 instrument: the room shows before a pick; camera and every ligh
   const after = Number(await page.locator('input[id$="-light1-y"]').inputValue());
   assert.ok(Math.abs(after - (before + 0.1)) < 1e-9, `light 2 height ${before} -> ${after}`);
 
-  // A plain click on the colored object follows the pixel that looks at it.
-  const globe = await page.locator('[data-drag="target"]').boundingBox();
+  // A plain click on a surface that is not movable (the mirror ball) follows the pixel that looks at it.
+  const globe = await page.locator('[data-ref="globe-mirror"]').boundingBox();
   await page.mouse.click(globe.x + globe.width / 2, globe.y + globe.height / 2);
   await page.waitForFunction(() => document.querySelector('pre')?.textContent);
   const record = await page.locator('pre').evaluate(p => JSON.parse(p.textContent));
-  assert.equal(record.result.events.find(e => e.kind === 'hit').hit.objectId, 'target');
-  assert.match(await page.locator('.explain .summary').textContent(), /colored object/);
+  assert.equal(record.result.events.find(e => e.kind === 'hit').hit.objectId, 'mirror');
+  assert.match(await page.locator('.explain .summary').textContent(), /center sphere/);
   assert.ok(await page.locator('.replay-path').isVisible(), 'a Replay button appears with a path');
   assert.deepEqual(errors, []);
   await context.close();
@@ -425,6 +427,49 @@ test('Figure 2.1 says where off-frame rays come from (mirror wall bounce), with 
   assert.deepEqual(r.hits, ['back-wall', 'floor'], 'camera ray → mirror wall → far floor');
   assert.ok(r.origin, 'the shadow rays are labelled with their off-frame origin');
   assert.deepEqual(r.overlaps, [], 'no two labels overlap');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test('Balls: add one, it falls and settles; click it for the xyz gizmo; arrows move it; Reset removes it', async () => {
+  const { page, context, errors } = await open();
+  await page.getByRole('tab', { name: /Balls/ }).click();
+  await page.locator('.add-ball').click();
+  const title = () => page.locator('[data-drag="object:ball-1"] title').textContent();
+  // It starts in the air and comes to rest on the floor (y = radius 0.45).
+  await page.waitForFunction(() => /center \([^,]+, 0\.45,/.test(document.querySelector('[data-drag="object:ball-1"] title')?.textContent ?? ''), null, { timeout: 8000 });
+  // Settled means the scene stops changing (it touches y = 0.45 on every bounce too).
+  let last = -1;
+  for (let still = 0; still < 4;) {
+    await page.waitForTimeout(250);
+    const now = await version(page);
+    still = now === last ? still + 1 : 0;
+    last = now;
+  }
+  assert.equal(await page.locator('.ball-card legend').first().textContent(), 'Ball 1');
+  // Click it: the three arrows appear; the colored ball has none.
+  const ball = page.locator('[data-drag="object:ball-1"]');
+  await ball.scrollIntoViewIfNeeded();
+  const b = await ball.boundingBox();
+  await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2);
+  await page.locator('[data-drag="axis-x:ball-1"]').waitFor();
+  assert.deepEqual(await page.evaluate(() => [...document.querySelectorAll('[data-drag^="axis-"]')].map(e => e.getAttribute('data-drag')).sort()),
+    ['axis-x:ball-1', 'axis-y:ball-1', 'axis-z:ball-1']);
+  // Keyboard on the x arrow moves it one step along x.
+  const x0 = Number(/center \(([^,]+),/.exec(await title())[1]);
+  await page.locator('[data-drag="axis-x:ball-1"]').focus();
+  await page.keyboard.press('ArrowRight');
+  await page.waitForFunction(x => Number(/center \(([^,]+),/.exec(document.querySelector('[data-drag="object:ball-1"] title').textContent)[1]) > x + 0.04, x0);
+  // The colored ball's x/y/z sliders are in the Object tab.
+  await page.getByRole('tab', { name: 'Object' }).click();
+  assert.equal(await page.locator('.xyz input[type=range]').count(), 3);
+  // Reset: only the orange ball and the mirror ball remain.
+  const v = await version(page);
+  await page.locator('.reset-figure').click();
+  await ready(page, v + 1);
+  assert.equal(await page.locator('[data-drag="object:ball-1"]').count(), 0);
+  await page.getByRole('tab', { name: /Balls/ }).click();
+  assert.equal(await page.locator('.ball-card').count(), 0);
   assert.deepEqual(errors, []);
   await context.close();
 });

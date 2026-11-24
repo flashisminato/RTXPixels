@@ -1,10 +1,15 @@
 import { MAX_LIGHTS } from '../contracts.ts';
-import type { Controls, LightControl, Scene, Vec3 } from '../contracts.ts';
+import type { BallControl, Controls, LightControl, Scene, Vec3 } from '../contracts.ts';
 
 // Original room: mirror at center, coral target nearer the camera, teal back wall.
 // Control ranges keep the target separate from the mirror and the camera outside geometry.
 export const CONTROL_RANGES = {
-  targetX: { min: -2.8, max: -1.6, step: 0.05 },
+  // The colored ball moves freely in a box that keeps it on or just above the floor,
+  // in front of the back wall and clear of the camera; overlap with the mirror ball
+  // is checked separately (targetPositionIsFree).
+  targetX: { min: -4, max: 4, step: 0.05 },
+  targetY: { min: 0.65, max: 1.3, step: 0.05 },
+  targetZ: { min: -3, max: 3.5, step: 0.05 },
   lightX: { min: -4, max: 4, step: 0.1 },
   cameraYawDeg: { min: -40, max: 40, step: 1 },
   // Height and depth keep every light above both spheres and in front of the back wall.
@@ -12,6 +17,42 @@ export const CONTROL_RANGES = {
   lightZ: { min: -4, max: 4.5, step: 0.1 },
   lightIntensity: { min: 0, max: 150, step: 1 },
 } as const;
+
+/** Added balls: at most this many, so the room stays within the renderer's 8 objects and 8 materials. */
+export const MAX_BALLS = 4;
+export const BALL_RADIUS = 0.45;
+/** Where added balls may be (centres): above the floor, inside invisible side walls, clear of the camera. */
+export const BALL_BOUNDS = { x: { min: -4.5, max: 4.5 }, y: { min: BALL_RADIUS, max: 6 }, z: { min: -3, max: 5 - BALL_RADIUS } } as const;
+/** Ball paints (linear RGB). */
+export const BALL_COLORS: ReadonlyArray<{ name: string; albedo: Vec3 }> = [
+  { name: 'yellow', albedo: [0.85, 0.62, 0.06] },
+  { name: 'green', albedo: [0.1, 0.5, 0.15] },
+  { name: 'blue', albedo: [0.06, 0.2, 0.75] },
+  { name: 'purple', albedo: [0.4, 0.1, 0.55] },
+  { name: 'white', albedo: [0.8, 0.8, 0.78] },
+  { name: 'orange', albedo: [0.95, 0.35, 0.05] },
+];
+/** Where Ball n is dropped from: spread out, high in the air. */
+const BALL_DROPS: ReadonlyArray<[number, number]> = [[1.9, -1.6], [-1.0, -2.2], [2.8, 0.6], [-2.9, 2.4]];
+
+/** A new ball (smallest free label, its own color), dropped from the air; null when full. */
+export function newBall(existing: readonly BallControl[]): BallControl | null {
+  if (existing.length >= MAX_BALLS) return null;
+  const used = new Set(existing.map(b => b.n));
+  let n = 1;
+  while (used.has(n)) n++;
+  const [x, z] = BALL_DROPS[(n - 1) % BALL_DROPS.length];
+  return { n, x, y: 4.2, z, color: (n - 1) % BALL_COLORS.length, mode: 'matte' };
+}
+
+export const MIRROR_BALL = { center: [0, 1, 1.5] as Vec3, radius: 1 };
+export const TARGET_RADIUS = 0.65;
+
+/** Whether the colored ball may sit at this centre: not inside the mirror ball. */
+export function targetPositionIsFree(center: Vec3): boolean {
+  const d = Math.hypot(center[0] - MIRROR_BALL.center[0], center[1] - MIRROR_BALL.center[1], center[2] - MIRROR_BALL.center[2]);
+  return d > MIRROR_BALL.radius + TARGET_RADIUS + 0.02;
+}
 
 /** Linear-RGB colors for extra lights, so each one is recognisable in the picture. */
 export const EXTRA_LIGHT_TINTS: readonly Vec3[] = [
@@ -51,7 +92,7 @@ export function initialControls(): Controls {
   return { targetX: -2.1, lightX: -3, cameraYawDeg: 0,
     mirrorMode: 'mirror', maxRedirects: 4, viewMode: 'beauty',
     lightY: 5, lightZ: -2, lightIntensity: 55, extraLights: [],
-    wallColor: 0, wallMode: 'matte' };
+    wallColor: 0, wallMode: 'matte', targetY: 0.65, targetZ: -0.4, balls: [] };
 }
 
 export function createPreset(input: Partial<Controls> = initialControls()): Scene {
@@ -60,16 +101,18 @@ export function createPreset(input: Partial<Controls> = initialControls()): Scen
   const yaw = controls.cameraYawDeg * Math.PI / 180;
   return {
     objects: [
-      { kind: 'sphere', id: 'mirror', materialIndex: 0, center: [0, 1, 1.5], radius: 1 },
-      { kind: 'sphere', id: 'target', materialIndex: 1, center: [controls.targetX, 0.65, -0.4], radius: 0.65 },
+      { kind: 'sphere', id: 'mirror', materialIndex: 0, center: [...MIRROR_BALL.center], radius: MIRROR_BALL.radius },
+      { kind: 'sphere', id: 'target', materialIndex: 1, center: [controls.targetX, controls.targetY, controls.targetZ], radius: TARGET_RADIUS },
       { kind: 'plane', id: 'floor', materialIndex: 2, point: [0, 0, 0], normal: [0, 1, 0] },
       { kind: 'plane', id: 'back-wall', materialIndex: 3, point: [0, 0, 5], normal: [0, 0, -1] },
+      ...controls.balls.map((b, i) => ({ kind: 'sphere' as const, id: `ball-${b.n}`, materialIndex: 4 + i, center: [b.x, b.y, b.z] as Vec3, radius: BALL_RADIUS })),
     ],
     materials: [
       { mode: controls.mirrorMode, albedo: [0.65, 0.75, 0.9] },
       { mode: 'matte', albedo: [0.9, 0.15, 0.065] },
       { mode: 'matte', albedo: [0.38, 0.32, 0.22] },
       { mode: controls.wallMode, albedo: [...WALL_COLORS[controls.wallColor].albedo] },
+      ...controls.balls.map(b => ({ mode: b.mode, albedo: [...BALL_COLORS[b.color].albedo] as Vec3 })),
     ],
     camera: { position: [7 * Math.sin(yaw), 2.4, 1.5 - 7 * Math.cos(yaw)], target: [0, 0.9, 1.5], fovYDeg: 48 },
     light: { position: [controls.lightX, controls.lightY, controls.lightZ], color: [...MAIN_LIGHT_COLOR], intensity: controls.lightIntensity },
