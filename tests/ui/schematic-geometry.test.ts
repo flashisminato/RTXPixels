@@ -162,3 +162,12 @@ test('the schematic view turns, wraps its yaw, clamps its pitch, and resets', as
   }
   assert.deepEqual(towardViewer(), VIEW_TOWARD_VIEWER);
 });
+
+test('clipSegment3D keeps the part inside the box and says which end was cut', async () => {
+  const { clipSegment3D } = await import('../../src/ui/schematic-geometry.ts');
+  const box = { x0: -1, x1: 1, y0: 0, y1: 2, z0: -1, z1: 1 };
+  assert.deepEqual(clipSegment3D([0, 1, 0], [0.5, 1.5, 0.5], box), { a: [0, 1, 0], b: [0.5, 1.5, 0.5], clippedA: false, clippedB: false });
+  const far = clipSegment3D([0, 1, 0], [0, 555, 0], box)!;
+  assert.deepEqual([far.b, far.clippedA, far.clippedB], [[0, 2, 0], false, true]);
+  assert.equal(clipSegment3D([5, 5, 5], [6, 6, 6], box), null);
+});

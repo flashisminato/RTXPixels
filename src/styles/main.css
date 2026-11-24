@@ -281,7 +281,7 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 .ray-diagram .photon { pointer-events: none; filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.9)); }
 .figure-tools { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s4); margin-top: var(--s2); }
 .figure-hint { margin: 0; font-size: 13px; color: var(--graphite); max-width: var(--column); }
-.replay-path { min-height: 36px; padding: var(--s1) var(--s3); font-size: 14px; }
+.replay-path, .reset-figure { min-height: 36px; padding: var(--s1) var(--s3); font-size: 14px; }
 
 /* The pixel marker pulses once when a pixel is chosen; the answer fades in. */
 @keyframes marker-pulse { 0% { box-shadow: 0 0 0 2px var(--paper), 0 0 0 2px rgba(213, 34, 50, 0.6); } 100% { box-shadow: 0 0 0 2px var(--paper), 0 0 0 16px rgba(213, 34, 50, 0); } }

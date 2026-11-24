@@ -42,6 +42,10 @@ const actions: UIActions = {
       if (activeFrame) store.setInspection(inspectNormalized(activeFrame, u, v));
     } catch (error) { store.setStatus('error', `Selection rejected: ${message(error)}`); }
   },
+  clearInspection() {
+    selected = null;
+    if (store.getSnapshot().inspection) store.setInspection(null);
+  },
   inspectExample() {
     if (!activeFrame) {
       store.setStatus(store.getSnapshot().status, 'Wait for the current computed frame, then inspect the example.');

@@ -91,6 +91,8 @@ export type UIActions = {
   dispatch(action: Action): void;
   inspectAt(u: number, v: number): void; // normalized top-left [0,1]
   inspectExample(): void;
+  /** Forget the selected pixel, so no path is inspected until a new one is picked. */
+  clearInspection?(): void;
 };
 export type UIHandle = {
   canvasHost: HTMLElement;
