@@ -214,3 +214,20 @@ test('chapter 4 shows the real CPU and GPU source, linked from chapter 3, withou
   assert.deepEqual(errors, []);
   await context.close();
 });
+
+test('the typeset shading law and its numbers divide by π, as the contract and both tracers do', async () => {
+  // The panel's ✓ compares its model with the tracer, never the typeset equation, so a
+  // missing 1/π in the printed law went unnoticed. Check the rendered text itself.
+  const { page, context, errors } = await open();
+  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  const section = page.locator('.math-step', { has: page.locator('h3', { hasText: 'Is the light visible?' }) }).first();
+  await section.waitFor();
+  const text = await section.evaluate(s => ({
+    law: s.querySelector('.blk-law math')?.textContent ?? '',
+    numbers: [...s.querySelectorAll('.blk-numbers math')].map(m => m.textContent).join(' '),
+  }));
+  assert.match(text.law, /π[\s\u2062]*max/, `law: ${text.law}`); // U+2062: invisible times
+  assert.match(text.numbers, /π\s*⋅\s*\d/, `numbers: ${text.numbers}`);
+  assert.deepEqual(errors, []);
+  await context.close();
+});

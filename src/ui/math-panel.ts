@@ -2,9 +2,10 @@ import type { ViewState } from '../contracts.ts';
 import { buildMathStory, dot, type HitStep, type MathStory, type ReflectStep, type ShadeStep } from './math-model.ts';
 import { displayFigure, intersectionFigure, pixelToRayFigure, reflectionFigure, shadingFigure } from './math-figures.ts';
 import {
-  cases, cdot, comma, degrees, eq, frac, hadamard, implies, inline, math, mi, minus, mn, mo, mtext, mu, norm, num, paren,
+  approx, cases, cdot, comma, degrees, eq, frac, hadamard, implies, inline, math, mi, minus, mn, mo, mtext, mu, norm, num, paren,
   plus, row, sci, space, sqrt, sub, sup, tuple, v, vs, type MNode,
 } from './mathml.ts';
+import { planeDigits, rootDigits, sphereDigits } from './precision.ts';
 
 /**
  * Chapter 3, "The mathematics": one section per computation, each following the
@@ -251,6 +252,9 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
   if (hit.sphere) {
     const sp = hit.sphere;
     const near = sp.root === 'near';
+    // Printed precision at which the substitutions below reproduce their printed results (precision.ts).
+    const shown = sphereDigits(sp, hit.t);
+    const k = shown.digits;
     const oc = (): Element => paren(row(v('O'), minus(), v('C')));
     blocks.push(
       { kind: 'law', equations: [['ray meets sphere', row(sq(norm(row(v('O'), plus(), mi('t'), ref('D', v('D')), minus(), ref('C', v('C'))))), eq(), sq(ref('radius', mi('R'))))]] },
@@ -267,8 +271,8 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
         [mi('t'), mo('='), row(row(neg(mi('h')), mo('\u00b1'), sqrt(row(sq(mi('h')), minus(), mi('c')))), eq(), row(neg(ref('h', mi('h'))), mo('\u00b1'), ref('delta', sqrt(mi('\u0394')))))],
       ]), note: ['If ', X(mi('\u0394'), mo('<'), mn('0')), ' the line misses the sphere; if ', X(mi('\u0394'), eq(), mn('0')), ' it grazes it; the nearest root greater than ', S('\u03b5'), ' is the visible hit.'] },
       { kind: 'numbers', equations: [
-        math('quadratic terms', ref('h', mi('h')), eq(), num(sp.h), comma(), space(1), mi('c'), eq(), num(sp.c), comma(), space(1), mi('\u0394'), eq(), row(sq(mi('h')), minus(), mi('c')), eq(), num(sp.delta, 4)),
-        math('distance', mi('t'), eq(), row(neg(ref('h', mi('h'))), near ? minus() : plus(), ref('delta', sqrt(mi('\u0394')))), eq(), row(num(-sp.h), near ? minus() : plus(), ref('delta', num(Math.sqrt(Math.max(sp.delta, 0)), 4))), eq(), num(hit.t)),
+        math('quadratic terms', ref('h', mi('h')), eq(), num(sp.h, k), comma(), space(1), mi('c'), eq(), num(sp.c, k), comma(), space(1), mi('\u0394'), eq(), row(sq(mi('h')), minus(), mi('c')), shown.exact[0] ? eq() : approx(), num(sp.delta, 4)),
+        math('distance', mi('t'), eq(), row(neg(ref('h', mi('h'))), near ? minus() : plus(), ref('delta', sqrt(mi('\u0394')))), eq(), row(num(-sp.h, k), near ? minus() : plus(), ref('delta', num(Math.sqrt(Math.max(sp.delta, 0)), rootDigits(k)))), shown.exact[1] ? eq() : approx(), num(hit.t)),
         math('hit point and normal', ref('P', v('P')), eq(), row(v('O'), plus(), mi('t'), v('D')), eq(), tuple(hit.point), comma(), space(1), ref('N', v('N')), eq(), frac(row(v('P'), minus(), ref('C', v('C'))), ref('radius', mi('R'))), eq(), tuple(hit.normal)),
       ] },
       { kind: 'result', text: ['The ray meets the ', hit.name, ' at ', V('P'), ' = ', X(tuple(hit.point)), ', ', X(mi('t'), eq(), num(hit.t)), ' along the ray.'],
@@ -278,6 +282,7 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
     );
   } else if (hit.plane) {
     const pl = hit.plane;
+    const shown = planeDigits(pl, hit.t);
     blocks.push(
       { kind: 'law', equations: [['ray meets plane', row(dotted(v('n'), paren(row(v('O'), plus(), mi('t'), v('D'), minus(), sub(v('P'), mn('0'))))), eq(), mn('0'))]] },
       { kind: 'assume', items: [[V('n'), ' is a unit normal and ', V('P', '0'), ' any point of the plane.']] },
@@ -286,11 +291,11 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
         [mi('t'), mo('='), frac(dotted(v('n'), paren(row(sub(v('P'), mn('0')), minus(), v('O')))), dotted(v('n'), v('D')))],
       ]), note: ['If ', X(row(mo('|'), dotted(v('n'), v('D')), mo('|')), mo('<'), tenTo(-6)), ' the ray runs parallel to the plane and misses it.'] },
       { kind: 'numbers', equations: [
-        math('distance', mi('t'), eq(), frac(num(pl.numerator), num(pl.denominator)), eq(), num(hit.t)),
+        math('distance', mi('t'), eq(), frac(num(pl.numerator, shown.digits), num(pl.denominator, shown.digits)), shown.exact[0] ? eq() : approx(), num(hit.t)),
         math('hit point', v('P'), eq(), row(v('O'), plus(), mi('t'), v('D')), eq(), tuple(hit.point), comma(), space(1), v('N'), eq(), tuple(hit.normal)),
       ] },
       { kind: 'result', text: ['The ray meets the ', hit.name, ' at ', V('P'), ' = ', X(tuple(hit.point)), '.'],
-        interpretation: [X(dotted(v('D'), v('n')), eq(), num(pl.denominator), mo('<'), mn('0')), ': the ray travels against the normal, so it arrives at the front of the surface.'] },
+        interpretation: [X(dotted(v('D'), v('n')), eq(), num(pl.denominator, shown.digits), mo('<'), mn('0')), ': the ray travels against the normal, so it arrives at the front of the surface.'] },
     );
   }
   blocks.push({ kind: 'check', error: hit.tError, what: ['distance ', S('t')] });
@@ -356,7 +361,7 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
     blocks: [
       { kind: 'law', equations: [['shading', row(v('c'), eq(), row(mi('a'), v('\u03c1'), plus(), mi('V'), space(0.2),
         frac(row(paren(row(v('\u03c1'), hadamard(), vs('c', 'L'))), mi('I'), space(0.2), fn('max', row(ref('phi', dotted(ref('N', v('N')), ref('L', v('L')))), comma(), mn('0')))),
-          fn('max', row(sq(ref('d', mi('d'))), comma(), mn('0.01'))))))]] },
+          row(mi('\u03c0'), mo('\u2062'), space(0.2), fn('max', row(sq(ref('d', mi('d'))), comma(), mn('0.01')))))))]] },
       { kind: 'assume', items: [
         ['One point light: shadows are hard, so ', X(mi('V'), mo('\u2208'), row(fence('{'), mn('0'), comma(), mn('1'), fence('}'))), '.'],
         ['The surface is Lambertian (ideally matte): it reflects ', X(v('\u03c1'), slash(), mi('\u03c0')), ' of the arriving light in every direction.'],
@@ -374,7 +379,7 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
           ref('phi', dotted(v('N'), v('L'))), eq(), num(sh.rawNDotL, 4), comma(), space(1), mi('V'), eq(), mn(String(sh.visibility))),
         math('shading numbers', v('c'), eq(), row(num(sh.ambient, 2), tuple(sh.albedo), plus(), mn(String(sh.visibility)), cdot(),
           frac(row(paren(row(tuple(sh.albedo), hadamard(), tuple(sh.lightColor, 2))), cdot(), mn(String(sh.intensity)), cdot(), num(sh.nDotL, 4)),
-            num(Math.max(sh.distanceSquared, 0.01), 3)))),
+            row(mi('\u03c0'), cdot(), num(Math.max(sh.distanceSquared, 0.01), 3))))),
         math('shading result', v('c'), eq(), tuple(sh.color, 4)),
       ] },
       { kind: 'result', text: ['Linear color ', V('c'), ' = ', X(tuple(sh.color, 4)), ', with ', X(mi('V'), eq(), mn(String(sh.visibility))),
