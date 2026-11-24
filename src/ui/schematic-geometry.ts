@@ -137,7 +137,8 @@ export function placeLabel(at: ScreenPoint, width: number, height: number, candi
       if (inside > 0 && inside < samples.length) cost += 7;   // straddles the outline
       else if (inside === samples.length) cost += 3;           // sits on the sphere
     }
-    for (const o of obstacles.boxes) if (box.x0 < o.x1 && box.x1 > o.x0 && box.y0 < o.y1 && box.y1 > o.y0) cost += 20;
+    // Two labels on top of each other are unreadable, so that costs more than crossing a few lines.
+    for (const o of obstacles.boxes) if (box.x0 < o.x1 && box.x1 > o.x0 && box.y0 < o.y1 && box.y1 > o.y0) cost += 40;
     if (box.x0 < bounds.x0 || box.x1 > bounds.x1 || box.y0 < bounds.y0 || box.y1 > bounds.y1) cost += 100;
     if (cost < best.cost) best = { x, y, anchor: c.anchor, cost, box };
   });
@@ -168,4 +169,43 @@ export function segmentsCross(p1: ScreenPoint, p2: ScreenPoint, q1: ScreenPoint,
 export function worldDeltaAlong(drag: ScreenPoint, axis: ScreenPoint): number {
   const len2 = axis.x * axis.x + axis.y * axis.y;
   return len2 > 0 ? (drag.x * axis.x + drag.y * axis.y) / len2 : 0;
+}
+
+/** A polyline on a sphere's surface, split by whether it faces the viewer. */
+export type GlobeRun = { points: Vec3[]; front: boolean };
+
+/**
+ * Latitude and longitude circles of a sphere (a wireframe globe), sampled in 3D
+ * and split into runs on the near (front) and far (back) hemisphere as seen
+ * along `towardViewer`. Latitudes are horizontal circles (constant y); longitudes
+ * are great circles through the poles.
+ */
+export function globeLines(center: Vec3, radius: number, towardViewer: Vec3,
+  latitudesDeg = [-60, -30, 0, 30, 60], meridians = 6, samples = 72): GlobeRun[] {
+  const circles: Array<(t: number) => Vec3> = [];
+  for (const lat of latitudesDeg) {
+    const a = lat * Math.PI / 180;
+    const r = radius * Math.cos(a), y = center[1] + radius * Math.sin(a);
+    circles.push(t => [center[0] + r * Math.cos(t), y, center[2] + r * Math.sin(t)]);
+  }
+  for (let m = 0; m < meridians; m++) {
+    const phi = m * Math.PI / meridians;
+    const u: Vec3 = [Math.cos(phi), 0, Math.sin(phi)];
+    circles.push(t => [center[0] + radius * (u[0] * Math.cos(t)), center[1] + radius * Math.sin(t), center[2] + radius * (u[2] * Math.cos(t))]);
+  }
+  const runs: GlobeRun[] = [];
+  for (const circle of circles) {
+    let current: GlobeRun | null = null;
+    for (let i = 0; i <= samples; i++) {
+      const q = circle(2 * Math.PI * i / samples);
+      const front = (q[0] - center[0]) * towardViewer[0] + (q[1] - center[1]) * towardViewer[1] + (q[2] - center[2]) * towardViewer[2] >= 0;
+      if (!current || current.front !== front) {
+        // Runs share their boundary sample so the drawn circle has no gaps.
+        const previous: Vec3[] = current ? [current.points[current.points.length - 1]] : [];
+        current = { points: [...previous, q], front };
+        runs.push(current);
+      } else current.points.push(q);
+    }
+  }
+  return runs;
 }

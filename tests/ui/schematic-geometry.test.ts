@@ -25,11 +25,34 @@ test('sphere outline is the exact projected ellipse: every surface point inside,
   assert.ok(e.rx >= e.ry && e.ry > 0);
 });
 
-test('linear columns: x maps to the right, +y and +z map up the screen', () => {
+test('linear columns: x maps to the right, +y straight up, +z up and to the right', () => {
   const [cx, cy, cz] = linearColumns(map);
-  assert.ok(cx.x > 0 && Math.abs(cx.y) < 1e-9);
-  assert.ok(cy.y < 0, 'height tilts up the screen');
-  assert.ok(cz.y < 0 && Math.abs(cz.x) < 1e-9, 'depth runs up the screen');
+  assert.ok(cx.x > 0 && Math.abs(cx.x) > Math.abs(cx.y));
+  assert.ok(cy.y < 0 && Math.abs(cy.x) < 1e-9, 'height is vertical');
+  assert.ok(cz.y < 0 && cz.x > 0, 'depth recedes up and to the right');
+});
+
+test('the orthographic view draws a sphere as an exact circle', () => {
+  const e = sphereOutline(map, [0, 1, 1.5], 1);
+  assert.ok(Math.abs(e.rx - e.ry) < 1e-9, `outline is not a circle: ${e.rx} vs ${e.ry}`);
+});
+
+test('globeLines: latitude and longitude circles lie on the sphere, split into near and far halves', async () => {
+  const { globeLines } = await import('../../src/ui/schematic-geometry.ts');
+  const { VIEW_TOWARD_VIEWER } = await import('../../src/ui/explain.ts');
+  const center: Vec3 = [-2.1, 0.65, -0.4], radius = 0.65;
+  const runs = globeLines(center, radius, VIEW_TOWARD_VIEWER);
+  assert.ok(runs.some(r => r.front) && runs.some(r => !r.front));
+  for (const run of runs) {
+    for (const q of run.points) {
+      assert.ok(Math.abs(Math.hypot(q[0] - center[0], q[1] - center[1], q[2] - center[2]) - radius) < 1e-9, 'a point is off the sphere');
+    }
+    // Each run's interior points are on the side it claims (boundary samples are shared).
+    for (const q of run.points.slice(1, -1)) {
+      const facing = (q[0] - center[0]) * VIEW_TOWARD_VIEWER[0] + (q[1] - center[1]) * VIEW_TOWARD_VIEWER[1] + (q[2] - center[2]) * VIEW_TOWARD_VIEWER[2];
+      assert.equal(facing >= 0, run.front);
+    }
+  }
 });
 
 test('clipSegment: inside, crossing, outside and parallel cases', () => {

@@ -1,28 +1,42 @@
 import type { Scene, TraceEvent, Vec3, ViewState } from '../contracts.ts';
 
 /**
- * Oblique orthographic schematic. Depth (Z) is the long axis because the camera
- * looks along Z; height (Y) tilts that plane so up is not the screen's up.
+ * Orthographic 3D schematic, like a textbook coordinate frame: +Y is straight up,
+ * +X runs to the right (slightly toward the viewer) and +Z recedes up and to the
+ * right. The view is a pure rotation, so lengths along one direction share one
+ * scale and a sphere's outline is an exact circle.
  * Screen angles are not measurements. Incidence and reflection use the 3D vectors.
  */
-const HEIGHT_TILT = 0.42;
+const VIEW_YAW_DEG = 40;
+const VIEW_PITCH_DEG = 20;
 const NORMAL_LENGTH = 0.55;
 const MISS_LENGTH = 1.35;
 
-export const SCHEMATIC_NOTE = 'Schematic: a projected view of the computed points. Sideways is X, up is Y, and depth is Z. This is not a second camera and not another ray-traced picture. Angles on the drawing can look different from the 3D angles in the steps.';
-export const CANVAS_LABEL = 'Projected schematic, not a second camera. +X sideways, +Y up, +Z depth.';
+const yaw = VIEW_YAW_DEG * Math.PI / 180;
+const pitch = VIEW_PITCH_DEG * Math.PI / 180;
+/** Unit vector from the scene toward the viewer (front-right, above). */
+export const VIEW_TOWARD_VIEWER: Vec3 = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
+const SCREEN_RIGHT: Vec3 = [Math.cos(yaw), 0, Math.sin(yaw)];
+const SCREEN_UP: Vec3 = [-Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), Math.cos(yaw) * Math.sin(pitch)];
+
+export const SCHEMATIC_NOTE = 'Schematic: a 3D view of the computed points on a coordinate frame. X runs sideways, Y is up, and Z is depth, receding into the page. Dashed drops meet the floor (y = 0) below each point. This is not a second camera and not another ray-traced picture. Angles on the drawing can look different from the 3D angles in the steps.';
+export const CANVAS_LABEL = '3D schematic on a coordinate frame, not a second camera. +X sideways, +Y up, +Z depth.';
 
 export type PlanSegment = {
   from: Vec3;
   to: Vec3;
   role: 'path' | 'normal' | 'shadow-open' | 'shadow-blocked' | 'miss';
   label: string;
+  /** For shadow checks: which light (0 is the main light). */
+  light?: number;
 };
 
 export type PlanMark = {
   at: Vec3;
   role: 'camera' | 'hit' | 'blocker' | 'light';
   label: string;
+  /** For light marks: which light (0 is the main light). */
+  light?: number;
 };
 
 export type DiagramPlan = {
@@ -53,8 +67,8 @@ export function objectName(id: string | null): string {
 
 export function project(point: Vec3): { x: number; y: number } {
   return {
-    x: point[0] + HEIGHT_TILT * point[1],
-    y: point[2] + HEIGHT_TILT * 0.55 * point[1],
+    x: point[0] * SCREEN_RIGHT[0] + point[1] * SCREEN_RIGHT[1] + point[2] * SCREEN_RIGHT[2],
+    y: point[0] * SCREEN_UP[0] + point[1] * SCREEN_UP[1] + point[2] * SCREEN_UP[2],
   };
 }
 
@@ -275,6 +289,7 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
             to: copy(event.blockerPoint),
             role: 'shadow-blocked',
             label: sameObject || prefix ? '' : 'blocked',
+            light: lightIndex,
           });
           marks.push({ at: copy(event.blockerPoint), role: 'blocker', label: sameObject ? 'in shadow' : name });
           item(sameObject
@@ -300,6 +315,7 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
             to: copy(lightAt),
             role: 'shadow-open',
             label: prefix ? '' : 'light reaches here',
+            light: lightIndex,
           });
           item({
             kind: 'shadow',
@@ -346,7 +362,7 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
     const at = lightPositionOf(scene, index);
     if (markedLights.has(index) || !finiteVec(at)) return;
     markedLights.add(index);
-    marks.push({ at: copy(at), role: 'light', label: index > 0 ? `light ${index + 1}` : 'light' });
+    marks.push({ at: copy(at), role: 'light', label: index > 0 ? `light ${index + 1}` : 'light', light: index });
   }
 }
 
