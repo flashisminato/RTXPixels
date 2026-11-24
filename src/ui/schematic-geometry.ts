@@ -270,3 +270,30 @@ export function worldDeltaPair(drag: ScreenPoint, axisA: ScreenPoint, axisB: Scr
   if (Math.abs(det) < 1e-9) return [worldDeltaAlong(drag, axisA), 0];
   return [(drag.x * axisB.y - drag.y * axisB.x) / det, (axisA.x * drag.y - axisA.y * drag.x) / det];
 }
+
+export type Box3 = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
+
+/**
+ * Liang-Barsky in 3D: the part of segment a-b inside the box, or null. `clippedB`
+ * says the far end was cut (the segment continues beyond the box).
+ */
+export function clipSegment3D(a: Vec3, b: Vec3, box: Box3): { a: Vec3; b: Vec3; clippedA: boolean; clippedB: boolean } | null {
+  const d: Vec3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  let t0 = 0, t1 = 1;
+  const lo = [box.x0, box.y0, box.z0], hi = [box.x1, box.y1, box.z1];
+  for (let i = 0; i < 3; i++) {
+    for (const [p, q] of [[-d[i], a[i] - lo[i]], [d[i], hi[i] - a[i]]] as Array<[number, number]>) {
+      if (p === 0) { if (q < 0) return null; continue; }
+      const t = q / p;
+      if (p < 0) { if (t > t1) return null; if (t > t0) t0 = t; }
+      else { if (t < t0) return null; if (t < t1) t1 = t; }
+    }
+  }
+  const at = (t: number): Vec3 => [a[0] + d[0] * t, a[1] + d[1] * t, a[2] + d[2] * t];
+  return { a: at(t0), b: at(t1), clippedA: t0 > 0, clippedB: t1 < 1 };
+}
+
+/** Whether a point lies inside a box. */
+export function insideBox(p: Vec3, box: Box3): boolean {
+  return p[0] >= box.x0 && p[0] <= box.x1 && p[1] >= box.y0 && p[1] <= box.y1 && p[2] >= box.z0 && p[2] <= box.z1;
+}

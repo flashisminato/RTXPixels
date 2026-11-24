@@ -7,7 +7,7 @@ import {
 } from './explain.ts';
 import { COLORS, Figure, plus, pt, times, unit, type Pt, type Run } from './math-figures.ts';
 import {
-  aroundPoint, clipSegment, globeLines, linearColumns, placeLabel, screenToWorldRay, sphereOutline, worldDeltaAlong,
+  aroundPoint, clipSegment, clipSegment3D, globeLines, insideBox, linearColumns, placeLabel, screenToWorldRay, sphereOutline, worldDeltaAlong,
   worldDeltaPair, worldToPicture, type Candidate, type Mapper, type Obstacles, type Rect, type ScreenPoint,
 } from './schematic-geometry.ts';
 
@@ -65,6 +65,13 @@ export type ShowOptions = {
 };
 
 type Box = { x0: number; x1: number; y0: number; y1: number; z0: number; z1: number };
+/**
+ * The frame never grows past the room: the floor and back wall are infinite
+ * planes, so a bounce can land hundreds of units away. Such a ray is drawn to the
+ * frame's edge and labelled with where it continues, instead of shrinking the
+ * whole figure to fit it.
+ */
+const ROOM_LIMIT: Box = { x0: -7, x1: 7, y0: 0, y1: 8, z0: -7, z1: 6 };
 type Handle = { kind: 'target' } | { kind: 'camera' } | { kind: 'light'; index: number };
 type AnimItem = { el: SVGElement; step: number; grow?: { a: Pt; b: Pt }; tip?: string };
 type Rendered = { svg: SVGSVGElement; map: Mapper | null; box: Box | null; anim: AnimItem[] };
@@ -384,10 +391,10 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   const lights = scene ? sceneLights(scene) : [];
   const camera = scene?.camera.position ?? marks.find(m => m.role === 'camera')?.at ?? null;
 
-  // The frame encloses the camera, every light, both spheres and the path.
+  // The frame encloses the camera, every light, both spheres and the parts of
+  // the path that lie inside the room limit.
   const framed: Vec3[] = [
-    ...segments.flatMap(segment => [segment.from, segment.to]),
-    ...marks.map(m => m.at),
+    ...[...segments.flatMap(segment => [segment.from, segment.to]), ...marks.map(m => m.at)].filter(p => insideBox(p, ROOM_LIMIT)),
     ...lights.map(l => l.position),
     ...(camera ? [camera] : []),
     ...spheres.flatMap(s => [0, 1, 2].flatMap(axis => [-1, 1].map(sign => {
@@ -398,10 +405,12 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   const lo = [0, 1, 2].map(i => Math.min(...framed.map(p => p[i])));
   const hi = [0, 1, 2].map(i => Math.max(...framed.map(p => p[i])));
   const box: Box = lockedBox ?? {
-    x0: Math.floor(lo[0]), x1: Math.max(Math.ceil(hi[0]), Math.floor(lo[0]) + 1),
-    y0: 0, y1: Math.max(Math.ceil(hi[1]), 1),
-    z0: Math.floor(lo[2]), z1: Math.max(Math.ceil(hi[2]), Math.floor(lo[2]) + 1),
+    x0: Math.max(ROOM_LIMIT.x0, Math.floor(lo[0])), x1: Math.min(ROOM_LIMIT.x1, Math.max(Math.ceil(hi[0]), Math.floor(lo[0]) + 1)),
+    y0: 0, y1: Math.min(ROOM_LIMIT.y1, Math.max(Math.ceil(hi[1]), 1)),
+    z0: Math.max(ROOM_LIMIT.z0, Math.floor(lo[2])), z1: Math.min(ROOM_LIMIT.z1, Math.max(Math.ceil(hi[2]), Math.floor(lo[2]) + 1)),
   };
+  // Path pieces are cut to the frame (with a little room to spare).
+  const reach: Box = { x0: box.x0 - 0.6, x1: box.x1 + 0.6, y0: -0.01, y1: box.y1 + 0.6, z0: box.z0 - 0.6, z1: box.z1 + 0.6 };
   const corners: Vec3[] = [box.x0, box.x1].flatMap(x => [box.y0, box.y1].flatMap(y => [box.z0, box.z1].map(z => [x, y, z] as Vec3)));
   const map = screenMapper(corners, W, H, PAD);
   if (!map) return empty();
@@ -484,7 +493,7 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   };
   for (const light of lights) drop(light.position);
   if (camera) drop(camera);
-  for (const mark of marks) if (mark.role === 'hit') drop(mark.at, mark.step);
+  for (const mark of marks) if (mark.role === 'hit' && insideBox(mark.at, reach)) drop(mark.at, mark.step);
 
   // ---- Spheres as wireframe globes, at their real centres and radii. The near
   // half of each latitude and longitude circle is ink; the far half faint and dashed.
@@ -533,8 +542,12 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   let shadowIndex = 0;
   for (const role of order) {
     for (const segment of segments.filter(s => s.role === role)) {
-      const clip = clipSegment(toScreen(segment.from), toScreen(segment.to), PLOT);
-      if (!clip) continue;
+      const inRoom = clipSegment3D(segment.from, segment.to, reach);
+      if (!inRoom) continue;
+      const screenClip = clipSegment(toScreen(inRoom.a), toScreen(inRoom.b), PLOT);
+      if (!screenClip) continue;
+      // A piece cut at the frame counts as clipped at that end, like one cut at the plot edge.
+      const clip = { ...screenClip, clippedA: screenClip.clippedA || inRoom.clippedA, clippedB: screenClip.clippedB || inRoom.clippedB };
       obstacles.segments.push([clip.a, clip.b]);
       const dir = unit(pt(clip.b.x - clip.a.x, clip.b.y - clip.a.y));
       const step = segment.step;
@@ -546,6 +559,11 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
         const mid = plus(clip.a, times(pt(clip.b.x - clip.a.x, clip.b.y - clip.a.y), 0.55));
         atStep(step, () => f.arrow(plus(mid, times(dir, -10)), plus(mid, times(dir, 10)), first ? 'ray' : 'science', 1.9));
         pending.push({ at: clip.a, runs: B(first ? 'D' : 'R'), color, size: 17, step, candidates: alongSides(clip.a, clip.b, [0.55, 0.42, 0.68, 0.3, 0.8, 0.2, 0.9]) });
+        if (clip.clippedB) {
+          // The ray leaves the frame: an arrowhead at the edge, and where it lands.
+          atStep(step, () => f.arrow(plus(clip.b, times(dir, -14)), clip.b, first ? 'ray' : 'science', 1.9));
+          pending.push({ at: clip.b, runs: [`continues to ${fmt(segment.to)}`], color: '#62666b', size: 12, step, candidates: aroundPoint(12) });
+        }
         if (first && clip.clippedA) {
           const near = plus(clip.a, times(dir, 26));
           pending.push({ at: near, runs: ['from camera'], color: '#62666b', size: 13, step, candidates: [
@@ -615,9 +633,10 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
   const onSphere = (q: Vec3) => spheres.find(s => Math.abs(Math.hypot(q[0] - s.center[0], q[1] - s.center[1], q[2] - s.center[2]) - s.radius) < 1e-3);
   for (const mark of marks) {
     const at = toScreen(mark.at);
-    if (!inside(at)) continue;
+    if (mark.role === 'hit') hitIndex++;
+    // Points beyond the frame are named by their ray's "continues to" label instead.
+    if (!inside(at) || !insideBox(mark.at, reach)) continue;
     if (mark.role === 'hit') {
-      hitIndex++;
       const label = `P${hitIndex}`;
       atStep(mark.step, () => titled(f.dot(at, COLORS.ray, 4), `${label} ${fmt(mark.at)}`));
       const sphere = onSphere(mark.at);

@@ -313,3 +313,38 @@ test('Figure 2.1 plays a new path step by step, and shows it at once under reduc
   assert.deepEqual(still, { photons: 0, hidden: 0, replayHidden: true });
   await reduced.close();
 });
+
+test('Figure 2.1 stays room-sized for far bounces, and Reset restores the view, the scene and the pixel', async () => {
+  const { page, context, errors } = await open();
+  // Camera at 40°: the centre pixel's bounce lands ~636 units away on the infinite floor.
+  const v0 = await version(page);
+  await page.locator('input[id$="-camera"]').evaluate(input => { input.value = '40'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+  await ready(page, v0 + 1);
+  await page.getByLabel('Pixel column x, counted from the left').fill('320');
+  await page.getByLabel('Pixel row y, counted from the top').fill('180');
+  await page.getByLabel('Pixel row y, counted from the top').press('Enter');
+  await page.waitForFunction(() => document.querySelector('pre')?.textContent?.includes('"x":320'));
+  const far = await page.evaluate(() => {
+    const texts = [...document.querySelectorAll('.ray-diagram svg text')].map(t => t.textContent);
+    const hits = JSON.parse(document.querySelector('pre').textContent).result.events.filter(e => e.kind === 'hit').map(e => e.hit.point);
+    return { farthest: Math.max(...hits.flat().map(Math.abs)), ticks: Math.max(...texts.filter(t => /^-?\d+$/.test(t)).map(Number)), continues: texts.some(t => t.startsWith('continues to')) };
+  });
+  assert.ok(far.farthest > 100, `the scenario really reaches far: ${far.farthest}`);
+  assert.ok(far.ticks <= 8, `the frame stays room-sized (largest tick ${far.ticks})`);
+  assert.ok(far.continues, 'the cut ray says where it continues');
+
+  // Turn the view, then Reset everything.
+  await page.locator('.ray-diagram').focus();
+  await page.keyboard.press('ArrowLeft');
+  const v1 = await version(page);
+  await page.locator('.reset-figure').click();
+  await ready(page, v1 + 1);
+  const after = await page.evaluate(() => ({
+    yaw: document.querySelector('input[id$="-camera"]').value,
+    record: document.querySelector('pre').textContent,
+    marker: document.querySelector('.pixel-marker').hidden,
+  }));
+  assert.deepEqual(after, { yaw: '0', record: '', marker: true });
+  assert.deepEqual(errors, []);
+  await context.close();
+});

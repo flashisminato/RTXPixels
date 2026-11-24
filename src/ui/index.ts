@@ -379,12 +379,27 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   // Visibility, not display: showing or hiding it must not shift the page under a drag.
   replay.style.visibility = 'hidden';
   replay.addEventListener('click', () => diagram.replay(), { signal });
+  // Puts the whole figure back: the 3D view, the scene (camera, lights, object,
+  // mirror, bounces, view mode) and the selected pixel.
+  const resetFigure = document.createElement('button');
+  resetFigure.type = 'button';
+  resetFigure.className = 'button button-secondary reset-figure';
+  resetFigure.textContent = 'Reset';
+  resetFigure.setAttribute('aria-label', 'Reset Figure 2.1: view, scene and selected pixel');
+  resetFigure.addEventListener('click', () => {
+    diagram.resetView();
+    selection = null;
+    shownPixel = '';
+    placeMarker();
+    actions.clearInspection?.();
+    actions.dispatch({ type: 'reset' });
+  }, { signal });
   const figureTools = document.createElement('div');
   figureTools.className = 'figure-tools';
   const figureHint = document.createElement('p');
   figureHint.className = 'figure-hint';
   figureHint.textContent = 'Drag the camera, a light or the colored object. Click a surface to follow its pixel. Drag empty space to turn the view; double-click to reset it.';
-  figureTools.append(replay, figureHint);
+  figureTools.append(replay, resetFigure, figureHint);
   figure.append(figureTools);
   // The path plays when a new pixel is chosen, not when the same pixel is recomputed.
   let shownPixel = '';
