@@ -82,7 +82,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   statusHelp.className = 'status-help';
   statusHelp.textContent = 'This line is the picture’s actual status. Starting means it is still computing. Ready and fallback are real pictures. An error means the picture is unavailable, and the schematic will not invent one.';
 
-  const controls = document.createElement('aside');
+  const controls = document.createElement('section');
   controls.className = 'controls';
   controls.setAttribute('aria-label', 'Parameters');
   const controlsTitle = document.createElement('h3');
@@ -107,17 +107,6 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     'This steps the camera around the scene. The center sphere does not rotate, so there is no sphere-spin control.', CONTROL_RANGES.cameraYawDeg, value => {
       commitNumber(value, CONTROL_RANGES.cameraYawDeg, current?.controls.cameraYawDeg, snapped => actions.dispatch({ type: 'camera-yaw', value: snapped }));
     });
-  const more = document.createElement('details');
-  more.className = 'more';
-  const moreSummary = document.createElement('summary');
-  moreSummary.textContent = 'More controls';
-  const moreHelp = document.createElement('p');
-  moreHelp.className = 'more-help';
-  moreHelp.textContent = 'Light position, how many mirror bounces to follow, and picture checks.';
-  const light = rangeControl(signal, `${ns}-light`, 'Move the light',
-    'Slide the light sideways to change which surfaces it reaches.', CONTROL_RANGES.lightX, value => {
-      commitNumber(value, CONTROL_RANGES.lightX, current?.controls.lightX, snapped => actions.dispatch({ type: 'light-x', value: snapped }));
-    });
   const redirects = rangeControl(signal, `${ns}-bounces`, 'Mirror bounces to follow',
     '0 does not follow a mirror. 4 is the maximum. A mirror that needs another bounce is left black; the next hit is not guessed.',
     { min: 0, max: MAX_REDIRECTS, step: 1 }, value => {
@@ -133,27 +122,20 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       if (!mode || current?.controls.viewMode === mode) return;
       actions.dispatch({ type: 'view-mode', value: mode });
     });
-  more.append(moreSummary, moreHelp, light.wrap, redirects.wrap, viewMode.wrap);
 
   // ---- Lights: add up to MAX_LIGHTS point lights, move each in 3D and set its strength.
-  // Placed after "More controls" so the first four range inputs keep their order.
-  const lightsBox = document.createElement('details');
-  lightsBox.className = 'more lights';
-  lightsBox.open = true;
-  const lightsSummary = document.createElement('summary');
   const lightsHelp = document.createElement('p');
-  lightsHelp.className = 'more-help';
+  lightsHelp.className = 'panel-help';
   lightsHelp.textContent = 'Every light casts its own hard shadow. Add a colored light, move it in 3D, and change how strong it is.';
   const lightList = document.createElement('div');
   lightList.className = 'light-list';
   const addLight = document.createElement('button');
   addLight.type = 'button';
-  addLight.className = 'button button-secondary add-light';
+  addLight.className = 'add-light';
   addLight.textContent = '+ Add a light';
   addLight.addEventListener('click', () => {
     if ((current?.controls.extraLights.length ?? 0) < MAX_LIGHTS - 1) actions.dispatch({ type: 'light-add' });
   }, { signal });
-  lightsBox.append(lightsSummary, lightsHelp, lightList, addLight);
   type LightCard = { ranges: Record<LightAxis | 'intensity', { input: HTMLInputElement; output: HTMLElement }> };
   let lightCards: LightCard[] = [];
   let lightLayout = '';
@@ -214,9 +196,10 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       lightLayout = layout;
       lightList.replaceChildren();
       buildLightCards(view);
+      lightList.append(addLight);
     }
     const count = view.controls.extraLights.length + 1;
-    lightsSummary.textContent = `Lights (${count} of ${MAX_LIGHTS})`;
+    lightsTab.textContent = `Lights · ${count}`;
     addLight.disabled = count >= MAX_LIGHTS;
     addLight.textContent = count >= MAX_LIGHTS ? `All ${MAX_LIGHTS} lights are in use` : '+ Add a light';
     lightCards.forEach((card, index) => {
@@ -229,7 +212,66 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     });
   }
 
-  controls.append(controlsTitle, controlsHint, target.wrap, mirror.wrap, camera.wrap, more, lightsBox);
+  // ---- Parameters as a full-width tabbed panel under the picture. Each tab lays its
+  // controls out across the width instead of stacking every option in one column.
+  // DOM order of the range inputs stays: object x, camera, main light x, ...
+  const tabList = document.createElement('div');
+  tabList.className = 'param-tabs';
+  tabList.setAttribute('role', 'tablist');
+  tabList.setAttribute('aria-label', 'Parameter groups');
+  const tabs: HTMLButtonElement[] = [];
+  const panels: HTMLElement[] = [];
+  function tabPanel(key: string, label: string, children: HTMLElement[], help?: HTMLElement): HTMLButtonElement {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'param-tab';
+    tab.id = `${ns}-tab-${key}`;
+    tab.setAttribute('role', 'tab');
+    tab.textContent = label;
+    const panel = document.createElement('div');
+    panel.className = `param-panel param-panel-${key}`;
+    panel.id = `${ns}-panel-${key}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tab.id);
+    tab.setAttribute('aria-controls', panel.id);
+    const grid = document.createElement('div');
+    grid.className = 'param-grid';
+    grid.append(...children);
+    panel.append(...(help ? [help] : []), grid);
+    tab.addEventListener('click', () => selectTab(tabs.indexOf(tab)), { signal });
+    tabs.push(tab);
+    panels.push(panel);
+    tabList.append(tab);
+    return tab;
+  }
+  function selectTab(index: number, focus = false): void {
+    tabs.forEach((tab, i) => {
+      const selected = i === index;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      panels[i].hidden = !selected;
+    });
+    if (focus) tabs[index].focus();
+  }
+  tabList.addEventListener('keydown', event => {
+    const at = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const next = event.key === 'ArrowRight' ? (at + 1) % tabs.length
+      : event.key === 'ArrowLeft' ? (at - 1 + tabs.length) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    selectTab(next, true);
+  }, { signal });
+  tabPanel('object', 'Object', [target.wrap, mirror.wrap]);
+  tabPanel('camera', 'Camera', [camera.wrap]);
+  const lightsTab = tabPanel('lights', 'Lights · 1', [lightList], lightsHelp);
+  tabPanel('picture', 'Picture', [redirects.wrap, viewMode.wrap]);
+  selectTab(0);
+  const controlsHead = document.createElement('div');
+  controlsHead.className = 'controls-head';
+  controlsHead.append(controlsTitle, controlsHint);
+  controls.append(controlsHead, tabList, ...panels);
 
   const explain = document.createElement('section');
   explain.className = 'explain';
@@ -287,9 +329,6 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const pictureCaption = document.createElement('figcaption');
   pictureCaption.append(figureLabel('Figure 1.1'), 'The scene, ray traced live on the GPU (WebGL2) at up to 640 × 360 pixels. ', pictureHelp);
   pictureFigure.append(frame, pictureCaption);
-  const stageGrid = document.createElement('div');
-  stageGrid.className = 'stage-grid';
-  stageGrid.append(pictureFigure, controls);
   const pixelSelect = document.createElement('fieldset');
   pixelSelect.className = 'pixel-select';
   const pixelLegend = document.createElement('legend');
@@ -300,7 +339,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const inspectRow = document.createElement('div');
   inspectRow.className = 'inspect-row';
   inspectRow.append(pixelSelect, actionsRow);
-  picture.append(lead, stageGrid, inspectRow, actionHelp, status, statusHelp);
+  picture.append(lead, pictureFigure, inspectRow, status, controls, actionHelp, statusHelp);
 
   // ---- Chapter 2: following one pixel.
   const follow = chapter('ch-2', '2', 'Follow one pixel');
@@ -402,7 +441,6 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       status.dataset.status = view.status;
       record.textContent = view.inspection ? JSON.stringify(view.inspection) : '';
       syncRange(target.input, target.output, view.controls.targetX, view.controls.targetX.toFixed(2));
-      syncRange(light.input, light.output, view.controls.lightX, view.controls.lightX.toFixed(1));
       syncLights(view);
       syncRange(camera.input, camera.output, view.controls.cameraYawDeg, `${Math.round(view.controls.cameraYawDeg)}°`);
       syncRange(redirects.input, redirects.output, view.controls.maxRedirects, String(view.controls.maxRedirects));
