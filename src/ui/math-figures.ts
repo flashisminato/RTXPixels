@@ -602,7 +602,7 @@ export function displayFigure(d: DisplayStep): SVGSVGElement {
   const f = new Figure(780, 250, `Figure: display curve for the ${d.mode} view, with the pixel's red, green and blue values marked; final color bytes ${d.bytes.join(', ')}.`);
   const x0 = 74, y0 = 206, pw = 360, ph = 168;
   const maxC = Math.max(...d.linear, 0);
-  const xMax = d.mode === 'beauty' ? Math.max(2, Math.ceil(maxC * 1.25 * 2) / 2) : 1;
+  const xMax = d.mode === 'beauty' || d.mode === 'raster' ? Math.max(2, Math.ceil(maxC * 1.25 * 2) / 2) : 1;
   const X = (c: number): number => x0 + c / xMax * pw;
   const Y = (v: number): number => y0 - v * ph;
 
@@ -630,12 +630,12 @@ export function displayFigure(d: DisplayStep): SVGSVGElement {
     }
     return dpath;
   };
-  if (d.mode === 'beauty') {
+  if (d.mode === 'beauty' || d.mode === 'raster') {
     f.path(sample(c => c / (1 + c)), { stroke: COLORS.ink, width: 1.3, dash: '5 4' });
     f.math(pt(X(xMax) - 4, Y(xMax / (1 + xMax)) + 16), [I('c'), ' / (1 + ', I('c'), ')'], { anchor: 'end', size: 14 });
   }
   f.path(sample(c => displayCurve(d.mode, c)), { stroke: COLORS.ink, width: 1.8 });
-  const curveLabel: Run[] = d.mode === 'beauty' ? ['sRGB(', I('c'), ' / (1 + ', I('c'), '))'] : d.mode === 'albedo' ? ['sRGB(', I('c'), ')'] : [I('c')];
+  const curveLabel: Run[] = d.mode === 'beauty' || d.mode === 'raster' ? ['sRGB(', I('c'), ' / (1 + ', I('c'), '))'] : d.mode === 'albedo' ? ['sRGB(', I('c'), ')'] : [I('c')];
   f.math(pt(X(xMax) - 4, Y(displayCurve(d.mode, xMax)) - 14), curveLabel, { anchor: 'end', color: COLORS.ink, size: 14 });
 
   const channelColors = ['#d23b3b', '#2f9a44', '#3b63d2'];

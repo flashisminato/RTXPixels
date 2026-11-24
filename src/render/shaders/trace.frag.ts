@@ -72,6 +72,7 @@ precision highp int;
 #define VIEW_BEAUTY 0
 #define VIEW_HIT 1
 #define VIEW_ALBEDO 2
+#define VIEW_RASTER 3
 ${debug ? '\n#define DEBUG_VARIANT 1\n' : ''}
 out vec4 fragColor;
 
@@ -263,8 +264,8 @@ int modeOf(int materialIndex) {
   return uMaterialMode[idx];
 }
 
-/** One point light's shadow-checked direct term; zero when facing away or blocked. */
-vec3 directLight(Hit h, vec3 albedo, vec3 shadowOrigin, vec3 lightPosition, vec3 lightColor, float intensity) {
+/** One point light's direct term; zero when facing away, or when blocked if shadows are on. */
+vec3 directLight(Hit h, vec3 albedo, vec3 shadowOrigin, vec3 lightPosition, vec3 lightColor, float intensity, bool shadows) {
   vec3 delta = lightPosition - shadowOrigin;
   float distanceToLight = length(delta);
   vec3 L = delta / max(distanceToLight, EPS);
@@ -272,25 +273,30 @@ vec3 directLight(Hit h, vec3 albedo, vec3 shadowOrigin, vec3 lightPosition, vec3
   float nDotL = max(dot(h.normal, L), 0.0);
   if (nDotL <= 0.0) return vec3(0.0);
 
-  if (occluded(shadowOrigin, L, distanceToLight)) return vec3(0.0);
+  if (shadows && occluded(shadowOrigin, L, distanceToLight)) return vec3(0.0);
 
   return (albedo / PI) * lightColor * intensity * nDotL
        / max(distanceToLight * distanceToLight, 0.01);
 }
 
-vec3 shadeMatte(Hit h) {
+/** Ambient once, then the main light and each extra light add their own term. */
+vec3 shadeLit(Hit h, bool shadows) {
   vec3 albedo = albedoOf(h.materialIndex);
   vec3 shadowOrigin = h.point + EPS * h.normal;
-
-  // Ambient once, then the main light and each extra light add their own term.
   vec3 color = uAmbient * albedo
-             + directLight(h, albedo, shadowOrigin, uLightPosition, uLightColor, uLightIntensity);
+             + directLight(h, albedo, shadowOrigin, uLightPosition, uLightColor, uLightIntensity, shadows);
   for (int i = 0; i < MAX_EXTRA_LIGHTS; i++) {
     if (i >= uExtraLightCount) break;
-    color += directLight(h, albedo, shadowOrigin, uExtraLightPosition[i], uExtraLightColor[i], uExtraLightIntensity[i]);
+    color += directLight(h, albedo, shadowOrigin, uExtraLightPosition[i], uExtraLightColor[i], uExtraLightIntensity[i], shadows);
   }
   return color;
 }
+
+/** Ray tracing on: a matte surface, with a shadow ray toward every light. */
+vec3 shadeMatte(Hit h) { return shadeLit(h, true); }
+
+/** Ray tracing off: the first surface lit directly, as a rasterizer would — no shadows, no bounces. */
+vec3 shadeLocal(Hit h) { return shadeLit(h, false); }
 
 // ---------------------------------------------------------------------------
 // Encounter loop. No recursion; a compile-time bound with a runtime budget.
@@ -395,6 +401,13 @@ void main() {
     Hit h = nearestHit(origin, dir, EPS, FAR);
     vec3 linear = h.did ? albedoOf(h.materialIndex) : vec3(0.0);
     fragColor = vec4(linearToSrgb(linear), 1.0);   // sRGB only, no tone map
+    return;
+  }
+
+  if (uViewMode == VIEW_RASTER) {
+    Hit h = nearestHit(origin, dir, EPS, FAR);
+    vec3 local = h.did ? shadeLocal(h) : sky(dir);
+    fragColor = vec4(linearToSrgb(reinhard(local)), 1.0);
     return;
   }
 

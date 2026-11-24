@@ -12,7 +12,9 @@ export const MAX_LIGHTS = 4;
 
 export type Vec3 = [number, number, number];
 export type Mode = 'matte' | 'mirror';
-export type ViewMode = 'beauty' | 'hit' | 'albedo';
+/** 'beauty' is ray tracing on; 'raster' is ray tracing off (first surface, direct light only);
+ * 'hit' and 'albedo' are first-hit diagnostics. */
+export type ViewMode = 'beauty' | 'raster' | 'hit' | 'albedo';
 export type Material = { mode: Mode; albedo: Vec3 }; // LINEAR RGB
 export type PointLight = { position: Vec3; color: Vec3; intensity: number }; // LINEAR RGB
 export type SceneObject =

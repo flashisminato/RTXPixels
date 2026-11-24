@@ -179,7 +179,7 @@ export function buildExplanation(view: ViewState): Explanation {
   const events = Array.isArray(inspection.result?.events) ? inspection.result.events : [];
   if (events.length === 0) {
     return {
-      heading: view.controls.viewMode === 'beauty' ? 'Why this pixel is that color' : 'First-hit check for this pixel',
+      heading: headingFor(view.controls.viewMode),
       answer: `Pixel (${inspection.pixel.x}, ${inspection.pixel.y}) returned no trace events.`,
       modeNote,
       summary: 'This pixel returned no trace events.',
@@ -190,10 +190,10 @@ export function buildExplanation(view: ViewState): Explanation {
       stale: false,
     };
   }
-  const built = planEvents(events, view.scene);
+  const built = planEvents(events, view.scene, view.controls.viewMode);
   return {
-    heading: view.controls.viewMode === 'beauty' ? 'Why this pixel is that color' : 'First-hit check for this pixel',
-    answer: answerFor(inspection.pixel, events, view.controls.maxRedirects),
+    heading: headingFor(view.controls.viewMode),
+    answer: answerFor(inspection.pixel, events, view.controls.maxRedirects, view.controls.viewMode),
     modeNote,
     summary: summarize(events, view.controls.maxRedirects),
     pixelLine: pixelLine(view, inspection),
@@ -206,7 +206,12 @@ export function buildExplanation(view: ViewState): Explanation {
   };
 }
 
+function headingFor(mode: ViewState['controls']['viewMode']): string {
+  return mode === 'beauty' || mode === 'raster' ? 'Why this pixel is that color' : 'First-hit check for this pixel';
+}
+
 function modeCopy(mode: ViewState['controls']['viewMode']): string {
+  if (mode === 'raster') return 'Ray tracing off: the first surface each pixel sees is lit directly by the lights. Nothing checks for shadows, and mirrors show no reflection.';
   if (mode === 'hit') return 'First-hit diagnostic: white means a surface was hit, black means the ray missed. This is not the full picture’s color, and it does not follow a reflection.';
   if (mode === 'albedo') return 'First-hit diagnostic: the color is the first surface’s own color, or black if the ray missed. This is not the full picture, and it does not follow a reflection.';
   return 'Full picture: a mirror can bounce the path, and a matte surface then decides the color, including whether the light is blocked.';
@@ -227,7 +232,13 @@ function pixelLine(view: ViewState, inspection: NonNullable<ViewState['inspectio
  * The direct answer to "why is this pixel that color?": the pixel's coordinates,
  * the path in one sentence, and whether light reaches the surface that ends it.
  */
-function answerFor(pixel: { x: number; y: number }, events: TraceEvent[], redirects: number): string {
+function answerFor(pixel: { x: number; y: number }, events: TraceEvent[], redirects: number, mode: ViewState['controls']['viewMode'] = 'beauty'): string {
+  if (mode === 'raster') {
+    const hit = events.find((event): event is Extract<TraceEvent, { kind: 'hit' }> => event.kind === 'hit');
+    return hit
+      ? `Pixel (${pixel.x}, ${pixel.y}): Ray tracing is off, so the camera ray stops at the ${objectName(hit.hit.objectId)}. It is lit directly by the lights, with no shadows and no reflection.`
+      : `Pixel (${pixel.x}, ${pixel.y}): The ray misses every object, so the pixel is the sky color, with ray tracing on or off.`;
+  }
   const path = summarize(events, redirects);
   const end = events.findLast((event): event is Extract<TraceEvent, { kind: 'end' }> => event.kind === 'end');
   let light = '';
@@ -266,7 +277,7 @@ function lightPositionOf(scene: Scene, index: number): Vec3 | undefined {
   return index > 0 ? scene.extraLights?.[index - 1]?.position : scene.light.position;
 }
 
-function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['items']; segments: PlanSegment[]; marks: PlanMark[] } {
+function planEvents(events: TraceEvent[], scene: Scene, mode: ViewState['controls']['viewMode'] = 'beauty'): { items: Explanation['items']; segments: PlanSegment[]; marks: PlanMark[] } {
   const items: Explanation['items'] = [];
   const segments: PlanSegment[] = [];
   const marks: PlanMark[] = [];
@@ -406,7 +417,7 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
             });
           }
         }
-        items.push(endItem(event, sawHit));
+        items.push(endItem(event, sawHit, mode));
         break;
       }
       default: {
@@ -425,7 +436,10 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
   }
 }
 
-function endItem(event: Extract<TraceEvent, { kind: 'end' }>, sawHit: boolean): Explanation['items'][number] {
+function endItem(event: Extract<TraceEvent, { kind: 'end' }>, sawHit: boolean, mode: ViewState['controls']['viewMode'] = 'beauty'): Explanation['items'][number] {
+  if (mode === 'raster' && event.reason === 'surface') {
+    return { kind: 'end', title: 'Lit directly, without ray tracing', detail: 'With ray tracing off, the color is decided at the first surface. It gets a little light that is always there, plus the direct light from every lamp it faces. Nothing checks whether something is in the way, and a mirror is not followed.' };
+  }
   if (event.reason === 'sky') {
     return { kind: 'end', title: 'Misses into the sky', detail: 'No object was hit. The pixel uses the computed sky color. This is a miss, not an error, and the drawing does not add a surface.' };
   }

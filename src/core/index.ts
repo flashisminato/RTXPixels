@@ -75,7 +75,7 @@ function trace(scene: Scene, primary: Ray, options: TraceOptions, events?: Trace
   while (true) {
     const hit = nearestHit(scene, ray, EPS, FAR);
     if (hit) events?.push({ kind: 'hit', from: ray.origin, incoming: ray.direction, hit });
-    if (options.viewMode !== 'beauty') {
+    if (options.viewMode === 'hit' || options.viewMode === 'albedo') {
       events?.push({ kind: 'end', reason: 'diagnostic', from: hit?.point ?? ray.origin, direction: ray.direction });
       if (!hit) return [0, 0, 0];
       return options.viewMode === 'hit' ? [1, 1, 1] : [...scene.materials[hit.materialIndex].albedo];
@@ -86,6 +86,13 @@ function trace(scene: Scene, primary: Ray, options: TraceOptions, events?: Trace
     }
     const material = scene.materials[hit.materialIndex];
     const offset = add(hit.point, scale(hit.normal, EPS));
+    if (options.viewMode === 'raster') {
+      // Ray tracing off: the first surface is lit directly by every light, the way a
+      // rasterizer shades it. No shadow rays and no mirror bounce; a mirror shows its
+      // own tint, lit like any matte surface.
+      events?.push({ kind: 'end', reason: 'surface', from: hit.point, direction: ray.direction });
+      return localShade(scene, material.albedo, hit.normal, offset);
+    }
     if (material.mode === 'mirror') {
       if (redirects >= options.maxRedirects) {
         events?.push({ kind: 'end', reason: 'budget', from: hit.point, direction: ray.direction });
@@ -119,6 +126,23 @@ function trace(scene: Scene, primary: Ray, options: TraceOptions, events?: Trace
   }
 }
 
+/**
+ * Direct light without visibility: ambient once, then each light's
+ * rho / pi * c_L * I * max(N.L, 0) / max(d^2, 0.01) — the shading law with V = 1.
+ */
+export function localShade(scene: Scene, albedo: Vec3, normal: Vec3, at: Vec3): Vec3 {
+  const color = albedo.map(channel => scene.ambient * channel) as Vec3;
+  for (const light of sceneLights(scene)) {
+    const toLight = sub(light.position, at);
+    const distanceSquared = dot(toLight, toLight);
+    const distance = Math.sqrt(distanceSquared);
+    const lightDirection: Vec3 = distance > 0 ? scale(toLight, 1 / distance) : [0, 0, 0];
+    const irradiance = light.intensity * Math.max(dot(normal, lightDirection), 0) / Math.max(distanceSquared, 0.01);
+    for (let i = 0; i < 3; i++) color[i] += albedo[i] / Math.PI * light.color[i] * irradiance;
+  }
+  return color;
+}
+
 export function traceRay(scene: Scene, ray: Ray, options: TraceOptions): TraceResult {
   const events: TraceEvent[] = [];
   return { linearColor: trace(scene, ray, options, events), events };
@@ -133,7 +157,7 @@ export function encodeDisplay(linear: Vec3, mode: ViewMode): Vec3 {
   return linear.map(value => {
     let c = Math.max(0, value);
     if (mode === 'hit') return clamp(c, 0, 1);
-    if (mode === 'beauty') c = c / (1 + c);
+    if (mode === 'beauty' || mode === 'raster') c = c / (1 + c);
     return clamp(c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055, 0, 1);
   }) as Vec3;
 }

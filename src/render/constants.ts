@@ -35,6 +35,8 @@ export const MODE_MIRROR = 1;
 export const VIEW_BEAUTY = 0;
 export const VIEW_HIT = 1;
 export const VIEW_ALBEDO = 2;
+/** Ray tracing off: first surface, direct light only (no shadows, no bounces). */
+export const VIEW_RASTER = 3;
 
 /**
  * Test-only shader output channels. Production never sets a value other than 0.
