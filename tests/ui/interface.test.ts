@@ -240,3 +240,22 @@ test('the direct answer names the pixel and stays under 50 words across the pict
     }
   }
 });
+
+test('every figure element carries the step of the event that produced it, in order', async () => {
+  const { createStore } = await import('../../src/state/index.ts');
+  const { makeFrame, findMirrorExample } = await import('../../src/core/frame.ts');
+  const store = createStore();
+  store.dispatch({ type: 'light-add' });
+  const view = store.getSnapshot();
+  const example = findMirrorExample(makeFrame(view, 320, 180))!;
+  const plan = buildExplanation({ ...view, inspection: example.inspection }).diagram!;
+  const events = example.inspection.result.events;
+  for (const item of [...plan.segments, ...plan.marks]) {
+    assert.ok(Number.isInteger(item.step) && item.step! >= 0 && item.step! < events.length, JSON.stringify(item));
+  }
+  const firstPath = plan.segments.find(s => s.role === 'path')!;
+  const shadow = plan.segments.find(s => s.role.startsWith('shadow'))!;
+  assert.equal(events[firstPath.step!].kind, 'hit');
+  assert.equal(events[shadow.step!].kind, 'shadow');
+  assert.ok(firstPath.step! < shadow.step!, 'the camera ray comes before the shadow check');
+});

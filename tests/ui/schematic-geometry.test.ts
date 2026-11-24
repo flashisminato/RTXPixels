@@ -104,3 +104,61 @@ test('worldDeltaAlong converts a screen drag into world x through the projection
   assert.ok(Math.abs(worldDeltaAlong({ x: -cx.y * 3, y: cx.x * 3 }, cx)) < 1e-12);
   assert.equal(worldDeltaAlong({ x: 5, y: 5 }, { x: 0, y: 0 }), 0);
 });
+
+test('screenToWorldRay: every point on the line maps back to the clicked screen point', async () => {
+  const { screenToWorldRay } = await import('../../src/ui/schematic-geometry.ts');
+  const { VIEW_TOWARD_VIEWER } = await import('../../src/ui/explain.ts');
+  const target: Vec3 = [1.2, 0.7, -0.4];
+  const screen = map(target);
+  const ray = screenToWorldRay(map, screen, VIEW_TOWARD_VIEWER)!;
+  for (const t of [0, 37, 100, 163]) {
+    const p: Vec3 = [0, 1, 2].map(i => ray.origin[i] + ray.direction[i] * t) as Vec3;
+    const back = map(p);
+    assert.ok(Math.hypot(back.x - screen.x, back.y - screen.y) < 1e-6, `t=${t}: ${back.x},${back.y}`);
+  }
+  // The line passes through the original world point.
+  const toTarget: Vec3 = [0, 1, 2].map(i => target[i] - ray.origin[i]) as Vec3;
+  const along = toTarget[0] * ray.direction[0] + toTarget[1] * ray.direction[1] + toTarget[2] * ray.direction[2];
+  const off = [0, 1, 2].map(i => toTarget[i] - ray.direction[i] * along);
+  assert.ok(Math.hypot(...off) < 1e-6);
+});
+
+test('worldToPicture inverts the camera ray: a pixel’s ray lands back on that pixel', async () => {
+  const { worldToPicture } = await import('../../src/ui/schematic-geometry.ts');
+  const { makeCameraBasis, makeCameraRay } = await import('../../src/core/index.ts');
+  const { createPreset } = await import('../../src/scene/preset.ts');
+  const camera = makeCameraBasis(createPreset());
+  for (const [x, y] of [[0, 0], [320, 180], [639, 359], [101, 277]]) {
+    const ray = makeCameraRay(camera, x, y, 640, 360);
+    const point: Vec3 = [0, 1, 2].map(i => ray.origin[i] + ray.direction[i] * 6.5) as Vec3;
+    const uv = worldToPicture(camera, point, 640 / 360)!;
+    assert.equal(Math.floor(uv.u * 640), x);
+    assert.equal(Math.floor(uv.v * 360), y);
+  }
+  assert.equal(worldToPicture(camera, [0, 2.4, -20], 16 / 9), null, 'behind the camera');
+});
+
+test('worldDeltaPair splits a drag into two world axes exactly', async () => {
+  const { worldDeltaPair } = await import('../../src/ui/schematic-geometry.ts');
+  const [cx, cy] = linearColumns(map);
+  const drag = { x: cx.x * 1.5 + cy.x * -0.75, y: cx.y * 1.5 + cy.y * -0.75 };
+  const [a, b] = worldDeltaPair(drag, cx, cy);
+  assert.ok(Math.abs(a - 1.5) < 1e-9 && Math.abs(b + 0.75) < 1e-9, `${a}, ${b}`);
+});
+
+test('the schematic view turns, wraps its yaw, clamps its pitch, and resets', async () => {
+  const { setSchematicView, schematicView, towardViewer, DEFAULT_VIEW, VIEW_TOWARD_VIEWER, project } = await import('../../src/ui/explain.ts');
+  try {
+    setSchematicView(400, 200);
+    assert.deepEqual(schematicView(), { yawDeg: 40, pitchDeg: 75 });
+    setSchematicView(-10, -30);
+    assert.deepEqual(schematicView(), { yawDeg: -10, pitchDeg: 5 });
+    // Turned, +y is still straight up and the view stays a rotation.
+    const o = project([0, 0, 0]), up = project([0, 1, 0]);
+    assert.ok(Math.abs(up.x - o.x) < 1e-12 && up.y > o.y);
+    assert.notDeepEqual(towardViewer(), VIEW_TOWARD_VIEWER);
+  } finally {
+    setSchematicView(DEFAULT_VIEW.yawDeg, DEFAULT_VIEW.pitchDeg);
+  }
+  assert.deepEqual(towardViewer(), VIEW_TOWARD_VIEWER);
+});

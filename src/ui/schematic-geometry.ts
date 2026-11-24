@@ -209,3 +209,64 @@ export function globeLines(center: Vec3, radius: number, towardViewer: Vec3,
   }
   return runs;
 }
+
+/**
+ * The world-space line under a screen point of the orthographic schematic. Every
+ * world point on it maps to `screen`; it runs from the viewer into the scene.
+ * `towardViewer` is the view's unit vector toward the viewer (explain.ts).
+ */
+export function screenToWorldRay(map: Mapper, screen: ScreenPoint, towardViewer: Vec3): { origin: Vec3; direction: Vec3 } | null {
+  const [cx, cy, cz] = linearColumns(map);
+  const o = map([0, 0, 0]);
+  // Solve L p = screen - o for the point p perpendicular to the view direction:
+  // L is 2x3, so add the constraint p . towardViewer = 0 and invert the 3x3 system.
+  const m = [
+    [cx.x, cy.x, cz.x],
+    [cx.y, cy.y, cz.y],
+    [towardViewer[0], towardViewer[1], towardViewer[2]],
+  ];
+  const det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+    - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+    + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null;
+  const b = [screen.x - o.x, screen.y - o.y, 0];
+  const solve = (col: number): number => {
+    const r = m.map((rowValues, i) => rowValues.map((v, j) => j === col ? b[i] : v));
+    return (r[0][0] * (r[1][1] * r[2][2] - r[1][2] * r[2][1])
+      - r[0][1] * (r[1][0] * r[2][2] - r[1][2] * r[2][0])
+      + r[0][2] * (r[1][0] * r[2][1] - r[1][1] * r[2][0])) / det;
+  };
+  const p: Vec3 = [solve(0), solve(1), solve(2)];
+  const far = 100;
+  return {
+    origin: [p[0] + towardViewer[0] * far, p[1] + towardViewer[1] * far, p[2] + towardViewer[2] * far],
+    direction: [-towardViewer[0], -towardViewer[1], -towardViewer[2]],
+  };
+}
+
+/**
+ * Where a world point appears in the camera's picture, as normalized top-left
+ * coordinates (u, v) in [0, 1), or null when it is behind the camera or outside
+ * the frame. The inverse of core makeCameraRay for a picture of the given aspect.
+ */
+export function worldToPicture(camera: { origin: Vec3; forward: Vec3; right: Vec3; up: Vec3; tanHalfFov: number }, point: Vec3, aspect: number): { u: number; v: number } | null {
+  const d: Vec3 = [point[0] - camera.origin[0], point[1] - camera.origin[1], point[2] - camera.origin[2]];
+  const dotv = (a: Vec3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const z = dotv(d, camera.forward);
+  if (!(z > 1e-9)) return null;
+  const sx = dotv(d, camera.right) / (z * camera.tanHalfFov);
+  const sy = dotv(d, camera.up) / (z * camera.tanHalfFov);
+  const u = (sx / aspect + 1) / 2;
+  const v = (1 - sy) / 2;
+  return u >= 0 && u < 1 && v >= 0 && v < 1 ? { u, v } : null;
+}
+
+/**
+ * Split a screen drag into two world axes at once: the amounts (a, b) with
+ * a * axisA + b * axisB = drag, for axes given by their screen images.
+ */
+export function worldDeltaPair(drag: ScreenPoint, axisA: ScreenPoint, axisB: ScreenPoint): [number, number] {
+  const det = axisA.x * axisB.y - axisA.y * axisB.x;
+  if (Math.abs(det) < 1e-9) return [worldDeltaAlong(drag, axisA), 0];
+  return [(drag.x * axisB.y - drag.y * axisB.x) / det, (axisA.x * drag.y - axisA.y * drag.x) / det];
+}

@@ -200,7 +200,7 @@ test('Figure 2.1: drag the colored object and the light; keyboard steps them', a
   const [targetX2] = await controls(page);
   assert.ok(Math.abs(targetX2 - (targetX1 - 0.05)) < 1e-9, `ArrowLeft steps by 0.05: ${targetX1} -> ${targetX2}`);
   // The light, if drawn inside the figure, is a handle too.
-  const light = page.locator('[data-drag="light"]');
+  const light = page.locator('[data-drag="light-0"]');
   if (await light.count()) {
     await light.focus();
     const v2 = await version(page);
@@ -250,4 +250,66 @@ test('the typeset shading law and its numbers divide by π, as the contract and 
   assert.match(text.numbers, /π\s*⋅\s*\d/, `numbers: ${text.numbers}`);
   assert.deepEqual(errors, []);
   await context.close();
+});
+
+test('Figure 2.1 instrument: the room shows before a pick; camera and every light are handles; clicking a surface follows its pixel', async () => {
+  const { page, context, errors } = await open();
+  await page.getByRole('tab', { name: /Lights/ }).click();
+  await page.locator('.add-light').click();
+  await ready(page, 2);
+  const handles = await page.evaluate(() => [...document.querySelectorAll('.ray-diagram [data-drag]')].map(e => e.getAttribute('data-drag')));
+  assert.deepEqual(handles.sort(), ['camera', 'light-0', 'light-1', 'target'], 'room drawn and draggable before any pixel is picked');
+
+  // Keyboard on the camera handle orbits it one degree per press.
+  const v0 = await version(page);
+  await page.locator('[data-drag="camera"]').focus();
+  await page.keyboard.press('ArrowRight');
+  await ready(page, v0 + 1);
+  assert.equal(await page.evaluate(() => window.__view?.controls.cameraYawDeg ?? Number(document.querySelector('input[id$="-camera"]').value)), 1);
+
+  // Keyboard on an extra light moves it up (height) by one step.
+  const before = Number(await page.locator('input[id$="-light1-y"]').inputValue());
+  const v1 = await version(page);
+  await page.locator('[data-drag="light-1"]').focus();
+  await page.keyboard.press('ArrowUp');
+  await ready(page, v1 + 1);
+  const after = Number(await page.locator('input[id$="-light1-y"]').inputValue());
+  assert.ok(Math.abs(after - (before + 0.1)) < 1e-9, `light 2 height ${before} -> ${after}`);
+
+  // A plain click on the colored object follows the pixel that looks at it.
+  const globe = await page.locator('[data-drag="target"]').boundingBox();
+  await page.mouse.click(globe.x + globe.width / 2, globe.y + globe.height / 2);
+  await page.waitForFunction(() => document.querySelector('pre')?.textContent);
+  const record = await page.locator('pre').evaluate(p => JSON.parse(p.textContent));
+  assert.equal(record.result.events.find(e => e.kind === 'hit').hit.objectId, 'target');
+  assert.match(await page.locator('.explain .summary').textContent(), /colored object/);
+  assert.ok(await page.locator('.replay-path').isVisible(), 'a Replay button appears with a path');
+  assert.deepEqual(errors, []);
+  await context.close();
+});
+
+test('Figure 2.1 plays a new path step by step, and shows it at once under reduced motion', async () => {
+  const { page, context } = await open();
+  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  // Mid-play, the first path segment is still short and a light dot rides its tip.
+  await page.waitForTimeout(250);
+  const mid = await page.evaluate(() => ({ photons: document.querySelectorAll('.ray-diagram .photon').length }));
+  assert.ok(mid.photons > 0, 'the travelling dot is present while the path draws');
+  await page.waitForTimeout(3200);
+  assert.equal(await page.evaluate(() => document.querySelectorAll('.ray-diagram .photon').length), 0, 'the dot is gone when the path is complete');
+  await context.close();
+
+  const reduced = await browser.newContext({ viewport: { width: 1280, height: 900 }, reducedMotion: 'reduce' });
+  const p2 = await reduced.newPage();
+  await p2.goto(url);
+  await p2.waitForFunction(() => document.querySelector('[role=status]')?.textContent.startsWith('ready:'), null, { timeout: 20000 });
+  await p2.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await p2.waitForTimeout(150);
+  const still = await p2.evaluate(() => ({
+    photons: document.querySelectorAll('.ray-diagram .photon').length,
+    hidden: [...document.querySelectorAll('.ray-diagram svg *')].filter(e => e.style?.opacity === '0').length,
+    replayHidden: document.querySelector('.replay-path')?.style.visibility === 'hidden',
+  }));
+  assert.deepEqual(still, { photons: 0, hidden: 0, replayHidden: true });
+  await reduced.close();
 });
