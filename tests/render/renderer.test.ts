@@ -38,7 +38,7 @@ import {
 } from './harness';
 
 /**
- * Renderer checks owned by AI 1.
+ * Renderer checks.
  *
  * Every expectation below is derived by hand from the contract, not captured
  * from this implementation's output. Where a value depends on the display
@@ -690,7 +690,7 @@ test('dispose releases resources and rejects further draws', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 12. Pixel samples for CPU/GPU comparison (AI 3 integration)
+// 12. Pixel samples for CPU/GPU comparison (integration)
 // ---------------------------------------------------------------------------
 
 test('publishes stable off-silhouette pixel samples for CPU comparison', () => {

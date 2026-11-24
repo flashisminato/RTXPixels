@@ -12,7 +12,7 @@ let mounts = 0;
 
 /**
  * Product layout around an empty image host. The host has no padding or border;
- * the frame around it carries the outline. AI 3 inserts the image canvas.
+ * the frame around it carries the outline. main.ts inserts the image canvas.
  * The separate diagram canvas is not that host.
  */
 export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {

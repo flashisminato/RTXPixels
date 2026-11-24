@@ -7,7 +7,7 @@ import { lookAt } from './fixtures';
  *
  * The scene here is a renderer evidence fixture, not the product preset: it
  * exists to make reflection, shadow and diagnostic behaviour visible to a
- * human reviewer. AI 3 authors the real scene, colours and control limits.
+ * human reviewer. The real scene, colours and control limits live in src/scene/preset.ts.
  */
 
 declare global {

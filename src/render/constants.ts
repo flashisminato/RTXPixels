@@ -1,7 +1,7 @@
 /**
  * Renderer-local constants. These MUST stay numerically identical to the CPU
- * reference owned by AI 3 (src/core/**) and to the shared contract v1 text.
- * If AI 3 publishes different values, this file is wrong, not the contract.
+ * reference (src/core/**) and to the shared contract v1.
+ * If the two ever differ, this file is wrong, not the contract.
  */
 
 /** Shared surface epsilon. Ray self-intersection offset and tMin. */
@@ -40,7 +40,7 @@ export const VIEW_RASTER = 3;
 
 /**
  * Test-only shader output channels. Production never sets a value other than 0.
- * Coordinated with AI 3 for integration tests; not reachable from the UI.
+ * Used by the integration tests; not reachable from the UI.
  */
 export const DEBUG_OFF = 0;
 export const DEBUG_NORMAL = 1;

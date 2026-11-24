@@ -7,7 +7,7 @@ import { createPreset, initialControls } from '../../src/scene/preset.ts';
 import { buildMathStory, type MathStory } from '../../src/ui/math-model.ts';
 
 const W = 640;
-const H = 359; // the buffer main.ts produces for AI 2's 16:9 host today
+const H = 359; // the buffer main.ts produces for the 16:9 host today
 
 function view(overrides: Partial<Controls> = {}, pixel?: [number, number]): ViewState {
   const controls = { ...initialControls(), ...overrides };

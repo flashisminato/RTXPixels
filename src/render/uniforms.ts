@@ -218,7 +218,7 @@ export type PackedCamera = {
 };
 
 /**
- * The camera basis is supplied by AI 3 and used verbatim. The renderer does NOT
+ * The camera basis is supplied by the CPU core and used verbatim. The renderer does NOT
  * recompute it from position/target: deriving it twice is exactly how CPU and
  * GPU drift apart. Validation only.
  */

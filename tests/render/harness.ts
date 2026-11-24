@@ -5,8 +5,7 @@ import { createRenderer, type RendererInternals } from '../../src/render/index';
  * Minimal in-browser test harness for the renderer.
  *
  * Deliberately dependency-free: these checks must run against a real WebGL2
- * context, and the project has no committed package manifest yet (AI 3 owns
- * it). Adding a test framework now would mean guessing at their choice.
+ * context, which a Node test framework cannot provide.
  */
 
 export type TestCase = { name: string; run: () => void | Promise<void> };

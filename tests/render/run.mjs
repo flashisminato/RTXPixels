@@ -1,14 +1,9 @@
 /**
  * Headless GPU test runner for the renderer module.
  *
- * Why this exists in this shape: the project has no committed package manifest
- * or test framework yet (AI 3 owns those), and these checks are meaningless
- * without a real WebGL2 implementation. jsdom cannot run them. So the runner
- * bundles the TypeScript with esbuild, serves it, and drives headless Chrome
- * with a real GPU backend via the DevTools protocol.
- *
- * When AI 3 publishes the project's own tooling, this should be folded into it
- * rather than kept as a parallel system.
+ * These checks are meaningless without a real WebGL2 implementation, and jsdom
+ * cannot run them. So the runner bundles the TypeScript with esbuild, serves it,
+ * and drives headless Chrome with a real GPU backend via the DevTools protocol.
  *
  * Usage: node tests/render/run.mjs [--headful] [--keep-open]
  */
@@ -54,8 +49,7 @@ async function bundle() {
     console.error(
       'esbuild is required to bundle the renderer tests.\n' +
         'Install it locally:  npm i -D esbuild\n' +
-        'or run once without installing:  npx -y esbuild --version\n' +
-        'Note: AI 3 owns package.json; this runner intentionally does not create one.',
+        'or run once without installing:  npx -y esbuild --version',
     );
     process.exit(2);
   }
@@ -138,7 +132,7 @@ async function main() {
   const script = await bundle();
 
   const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>AI1 renderer checks</title></head>
+<html><head><meta charset="utf-8"><title>Renderer checks</title></head>
 <body><script>${script.replace(/<\/script>/gi, '<\\/script>')}</script></body></html>`;
 
   const server = createServer((req, res) => {
@@ -149,7 +143,7 @@ async function main() {
   const port = server.address().port;
   const pageUrl = `http://127.0.0.1:${port}/`;
 
-  const profile = mkdtempSync(resolve(tmpdir(), 'ai1-render-'));
+  const profile = mkdtempSync(resolve(tmpdir(), 'renderer-render-'));
   const debugPort = 9333 + Math.floor(Math.random() * 500);
 
   const args = [

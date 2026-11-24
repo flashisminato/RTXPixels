@@ -4,7 +4,7 @@
  * Numeric checks can pass while the picture is still wrong, so this renders a
  * few representative frames in headless Chrome and writes them to disk. These
  * are renderer evidence captures, not product screenshots: the authored preset
- * and its colours belong to AI 3.
+ * and its colours live in src/scene/preset.ts.
  *
  * Usage: node tests/render/capture.mjs [outputDir]
  */
@@ -59,7 +59,7 @@ async function main() {
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   const url = `http://127.0.0.1:${server.address().port}/`;
 
-  const profile = mkdtempSync(resolve(tmpdir(), 'ai1-capture-'));
+  const profile = mkdtempSync(resolve(tmpdir(), 'renderer-capture-'));
   const port = 9444 + Math.floor(Math.random() * 400);
   const child = spawn(
     chrome,

@@ -93,7 +93,7 @@ function activateFallback(reason: string) {
   try { previous?.dispose(); }
   catch (error) { fallbackReason += ` Renderer cleanup also failed: ${message(error)}`; }
   // A WebGL canvas cannot become a 2D canvas. Replace only our image canvas;
-  // the host, UI listeners and AI 2's separate diagram canvas survive.
+  // the host, UI listeners and the separate diagram survive.
   const replacement = makeCanvas();
   canvas.replaceWith(replacement);
   canvas = replacement;

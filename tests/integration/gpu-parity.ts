@@ -5,8 +5,8 @@ import { findMirrorExample, fitBuffer, makeFrame } from '../../src/core/frame.ts
 import { createRenderer, DEBUG_IDS, DEBUG_NORMAL, DEBUG_OFF } from '../../src/render/index.ts';
 import { createStore } from '../../src/state/index.ts';
 
-/** Browser-only integration check. Uses AI 1's unchanged diagnostic surface and
- * AI 3's actual reference math, rather than a second contract shim or renderer. */
+/** Browser-only integration check. Uses the renderer's diagnostic surface and the
+ * CPU reference math, rather than a second contract shim or renderer. */
 export function checkGPUParity() {
   const canvas = document.createElement('canvas');
   document.body.append(canvas);

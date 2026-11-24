@@ -75,7 +75,7 @@ async function main() {
   await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
   const url = `http://127.0.0.1:${server.address().port}/`;
 
-  const profile = mkdtempSync(resolve(tmpdir(), 'ai1-smoke-'));
+  const profile = mkdtempSync(resolve(tmpdir(), 'renderer-smoke-'));
   const port = 9555 + Math.floor(Math.random() * 300);
   const child = spawn(chrome, [
     '--headless=new',

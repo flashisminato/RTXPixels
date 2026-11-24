@@ -1,5 +1,4 @@
-// Shared contract v1. Changes require integration-owner coordination.
-// Semantics and module ownership: docs/contract-v1.md.
+// Shared contract v1: the types the renderer, the CPU core and the interface agree on.
 export const CONTRACT_VERSION = 1 as const;
 export const EPS = 1e-4;
 export const FAR = 1000;

@@ -6,7 +6,7 @@
  * with no shared edge, which removes the diagonal seam risk entirely.
  *
  * This stage carries NO ray logic. Every ray is constructed per fragment from
- * the camera basis uniforms supplied by AI 3, so the GPU never invents its own
+ * the camera basis uniforms supplied by the CPU core, so the GPU never invents its own
  * rotation convention.
  */
 export const FULLSCREEN_VERT = /* glsl */ `#version 300 es
