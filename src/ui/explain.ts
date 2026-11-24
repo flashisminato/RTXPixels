@@ -1,28 +1,42 @@
 import type { Scene, TraceEvent, Vec3, ViewState } from '../contracts.ts';
 
 /**
- * Oblique orthographic schematic. Depth (Z) is the long axis because the camera
- * looks along Z; height (Y) tilts that plane so up is not the screen's up.
+ * Orthographic 3D schematic, like a textbook coordinate frame: +Y is straight up,
+ * +X runs to the right (slightly toward the viewer) and +Z recedes up and to the
+ * right. The view is a pure rotation, so lengths along one direction share one
+ * scale and a sphere's outline is an exact circle.
  * Screen angles are not measurements. Incidence and reflection use the 3D vectors.
  */
-const HEIGHT_TILT = 0.42;
+const VIEW_YAW_DEG = 40;
+const VIEW_PITCH_DEG = 20;
 const NORMAL_LENGTH = 0.55;
 const MISS_LENGTH = 1.35;
 
-export const SCHEMATIC_NOTE = 'Schematic: a projected view of the computed points. Sideways is X, up is Y, and depth is Z. This is not a second camera and not another ray-traced picture. Angles on the drawing can look different from the 3D angles in the steps.';
-export const CANVAS_LABEL = 'Projected schematic, not a second camera. +X sideways, +Y up, +Z depth.';
+const yaw = VIEW_YAW_DEG * Math.PI / 180;
+const pitch = VIEW_PITCH_DEG * Math.PI / 180;
+/** Unit vector from the scene toward the viewer (front-right, above). */
+export const VIEW_TOWARD_VIEWER: Vec3 = [Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)];
+const SCREEN_RIGHT: Vec3 = [Math.cos(yaw), 0, Math.sin(yaw)];
+const SCREEN_UP: Vec3 = [-Math.sin(yaw) * Math.sin(pitch), Math.cos(pitch), Math.cos(yaw) * Math.sin(pitch)];
+
+export const SCHEMATIC_NOTE = 'Schematic: a 3D view of the computed points on a coordinate frame. X runs sideways, Y is up, and Z is depth, receding into the page. Dashed drops meet the floor (y = 0) below each point. This is not a second camera and not another ray-traced picture. Angles on the drawing can look different from the 3D angles in the steps.';
+export const CANVAS_LABEL = '3D schematic on a coordinate frame, not a second camera. +X sideways, +Y up, +Z depth.';
 
 export type PlanSegment = {
   from: Vec3;
   to: Vec3;
   role: 'path' | 'normal' | 'shadow-open' | 'shadow-blocked' | 'miss';
   label: string;
+  /** For shadow checks: which light (0 is the main light). */
+  light?: number;
 };
 
 export type PlanMark = {
   at: Vec3;
   role: 'camera' | 'hit' | 'blocker' | 'light';
   label: string;
+  /** For light marks: which light (0 is the main light). */
+  light?: number;
 };
 
 export type DiagramPlan = {
@@ -53,8 +67,8 @@ export function objectName(id: string | null): string {
 
 export function project(point: Vec3): { x: number; y: number } {
   return {
-    x: point[0] + HEIGHT_TILT * point[1],
-    y: point[2] + HEIGHT_TILT * 0.55 * point[1],
+    x: point[0] * SCREEN_RIGHT[0] + point[1] * SCREEN_RIGHT[1] + point[2] * SCREEN_RIGHT[2],
+    y: point[0] * SCREEN_UP[0] + point[1] * SCREEN_UP[1] + point[2] * SCREEN_UP[2],
   };
 }
 
@@ -197,6 +211,11 @@ function summarize(events: TraceEvent[], redirects: number): string {
   return 'The color is decided at a matte surface.';
 }
 
+/** Position of light `index` (0 is the main light), or undefined when it does not exist. */
+function lightPositionOf(scene: Scene, index: number): Vec3 | undefined {
+  return index > 0 ? scene.extraLights?.[index - 1]?.position : scene.light.position;
+}
+
 function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['items']; segments: PlanSegment[]; marks: PlanMark[] } {
   const items: Explanation['items'] = [];
   const segments: PlanSegment[] = [];
@@ -204,7 +223,7 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
   let paths = 0;
   let sawHit = false;
   let markedCamera = false;
-  let markedLight = false;
+  const markedLights = new Set<number>();
   let surfaceId: string | null = null;
 
   for (const event of events) {
@@ -251,21 +270,29 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
         break;
       }
       case 'shadow': {
+        const lightIndex = event.lightIndex ?? 0;
+        const lightAt = lightPositionOf(scene, lightIndex);
+        // The main light keeps its original wording; extra lights are numbered.
+        const prefix = lightIndex > 0 ? `Light ${lightIndex + 1}: ` : '';
         const name = objectName(event.blockerId);
         const sameObject = event.blockerId !== null && event.blockerId === surfaceId;
         const facingAway = Number.isFinite(event.nDotL) && event.nDotL < 1e-6
           ? ' The surface does not face the light, so the direct light adds nothing.'
           : '';
-        markLight();
+        markLight(lightIndex);
+        const item = (entry: Explanation['items'][number]): void => {
+          items.push(prefix ? { ...entry, title: prefix + entry.title } : entry);
+        };
         if (event.blocked && finiteVec(event.blockerPoint) && finiteVec(event.from)) {
           segments.push({
             from: copy(event.from),
             to: copy(event.blockerPoint),
             role: 'shadow-blocked',
-            label: sameObject ? '' : 'blocked',
+            label: sameObject || prefix ? '' : 'blocked',
+            light: lightIndex,
           });
           marks.push({ at: copy(event.blockerPoint), role: 'blocker', label: sameObject ? 'in shadow' : name });
-          items.push(sameObject
+          item(sameObject
             ? {
               kind: 'shadow',
               title: `No direct light on the ${name}`,
@@ -277,25 +304,26 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
               detail: `The check walks from the surface toward the light and hits the ${name} first. The drawing stops at that recorded blocker and does not continue to the light.${facingAway}`,
             });
         } else if (event.blocked) {
-          items.push({
+          item({
             kind: 'shadow',
             title: 'Shadow blocked',
             detail: 'The check reports a blocker, but no blocker position was recorded. The drawing does not invent one.',
           });
-        } else if (finiteVec(event.from) && finiteVec(scene.light.position)) {
+        } else if (finiteVec(event.from) && finiteVec(lightAt)) {
           segments.push({
             from: copy(event.from),
-            to: copy(scene.light.position),
+            to: copy(lightAt),
             role: 'shadow-open',
-            label: 'light reaches here',
+            label: prefix ? '' : 'light reaches here',
+            light: lightIndex,
           });
-          items.push({
+          item({
             kind: 'shadow',
             title: 'Light reaches this surface',
             detail: `Nothing is between this surface and the light. The drawing follows that clear path to the light’s position.${facingAway}`,
           });
         } else {
-          items.push({
+          item({
             kind: 'shadow',
             title: 'Light check',
             detail: 'A shadow check was recorded, but its points could not be drawn.',
@@ -330,10 +358,11 @@ function planEvents(events: TraceEvent[], scene: Scene): { items: Explanation['i
   }
   return { items, segments, marks };
 
-  function markLight(): void {
-    if (markedLight || !finiteVec(scene.light.position)) return;
-    markedLight = true;
-    marks.push({ at: copy(scene.light.position), role: 'light', label: 'light' });
+  function markLight(index: number): void {
+    const at = lightPositionOf(scene, index);
+    if (markedLights.has(index) || !finiteVec(at)) return;
+    markedLights.add(index);
+    marks.push({ at: copy(at), role: 'light', label: index > 0 ? `light ${index + 1}` : 'light', light: index });
   }
 }
 
@@ -368,7 +397,7 @@ function mathLines(view: ViewState, inspection: NonNullable<ViewState['inspectio
     } else if (event.kind === 'shadow') {
       const blocker = event.blocked
         ? `Blocker ${event.blockerId ?? 'unknown'} at ${finiteVec(event.blockerPoint) ? formatVec(event.blockerPoint) : 'not recorded'}.`
-        : `Light position ${formatVec(view.scene.light.position)}.`;
+        : `Light position ${formatVec(lightPositionOf(view.scene, event.lightIndex ?? 0) ?? view.scene.light.position)}.`;
       lines.push(`Shadow step: direction toward the light is ${formatVec(event.toLight)}. This is a direction, not the light’s position. How directly the surface faces the light: ${Number.isFinite(event.nDotL) ? event.nDotL.toFixed(3) : 'unavailable'}. ${blocker}`);
     }
   }

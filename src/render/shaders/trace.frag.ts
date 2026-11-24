@@ -5,6 +5,7 @@ import {
   MAX_OBJECTS,
   MAX_MATERIALS,
   MAX_REDIRECTS,
+  MAX_EXTRA_LIGHTS,
 } from '../constants';
 
 /**
@@ -55,6 +56,7 @@ precision highp int;
 #define MAX_OBJECTS ${MAX_OBJECTS}
 #define MAX_MATERIALS ${MAX_MATERIALS}
 #define MAX_REDIRECTS ${MAX_REDIRECTS}
+#define MAX_EXTRA_LIGHTS ${MAX_EXTRA_LIGHTS}
 
 #define EPS ${glslFloat(EPS)}
 #define FAR ${glslFloat(FAR)}
@@ -105,6 +107,11 @@ uniform float uTanHalfFov;
 uniform vec3 uLightPosition;
 uniform vec3 uLightColor;      // linear RGB
 uniform float uLightIntensity;
+// Extra point lights; only the first uExtraLightCount entries are read.
+uniform vec3 uExtraLightPosition[MAX_EXTRA_LIGHTS];
+uniform vec3 uExtraLightColor[MAX_EXTRA_LIGHTS];   // linear RGB
+uniform float uExtraLightIntensity[MAX_EXTRA_LIGHTS];
+uniform int uExtraLightCount;
 uniform float uAmbient;
 
 uniform vec3 uSkyBottom;       // linear RGB
@@ -256,24 +263,33 @@ int modeOf(int materialIndex) {
   return uMaterialMode[idx];
 }
 
-vec3 shadeMatte(Hit h) {
-  vec3 albedo = albedoOf(h.materialIndex);
-
-  vec3 shadowOrigin = h.point + EPS * h.normal;
-  vec3 delta = uLightPosition - shadowOrigin;
+/** One point light's shadow-checked direct term; zero when facing away or blocked. */
+vec3 directLight(Hit h, vec3 albedo, vec3 shadowOrigin, vec3 lightPosition, vec3 lightColor, float intensity) {
+  vec3 delta = lightPosition - shadowOrigin;
   float distanceToLight = length(delta);
   vec3 L = delta / max(distanceToLight, EPS);
 
-  vec3 ambient = uAmbient * albedo;
-
   float nDotL = max(dot(h.normal, L), 0.0);
-  if (nDotL <= 0.0) return ambient;
+  if (nDotL <= 0.0) return vec3(0.0);
 
-  if (occluded(shadowOrigin, L, distanceToLight)) return ambient;
+  if (occluded(shadowOrigin, L, distanceToLight)) return vec3(0.0);
 
-  vec3 direct = (albedo / PI) * uLightColor * uLightIntensity * nDotL
-              / max(distanceToLight * distanceToLight, 0.01);
-  return ambient + direct;
+  return (albedo / PI) * lightColor * intensity * nDotL
+       / max(distanceToLight * distanceToLight, 0.01);
+}
+
+vec3 shadeMatte(Hit h) {
+  vec3 albedo = albedoOf(h.materialIndex);
+  vec3 shadowOrigin = h.point + EPS * h.normal;
+
+  // Ambient once, then the main light and each extra light add their own term.
+  vec3 color = uAmbient * albedo
+             + directLight(h, albedo, shadowOrigin, uLightPosition, uLightColor, uLightIntensity);
+  for (int i = 0; i < MAX_EXTRA_LIGHTS; i++) {
+    if (i >= uExtraLightCount) break;
+    color += directLight(h, albedo, shadowOrigin, uExtraLightPosition[i], uExtraLightColor[i], uExtraLightIntensity[i]);
+  }
+  return color;
 }
 
 // ---------------------------------------------------------------------------

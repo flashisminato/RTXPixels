@@ -14,6 +14,7 @@ import {
   clampRedirects,
   packCamera,
   packLight,
+  packExtraLights,
   packScene,
   viewModeCode,
 } from './uniforms';
@@ -187,7 +188,8 @@ export function createRenderer(
       'uObjectA', 'uObjectB', 'uObjectMaterial', 'uAlbedo', 'uMaterialMode',
       'uObjectCount', 'uCameraOrigin', 'uCameraForward',
       'uCameraRight', 'uCameraUp', 'uTanHalfFov', 'uLightPosition',
-      'uLightColor', 'uLightIntensity', 'uAmbient', 'uSkyBottom', 'uSkyTop',
+      'uLightColor', 'uLightIntensity', 'uExtraLightPosition', 'uExtraLightColor',
+      'uExtraLightIntensity', 'uExtraLightCount', 'uAmbient', 'uSkyBottom', 'uSkyTop',
       'uResolution', 'uViewMode', 'uMaxRedirects',
     ];
     const missing = required.filter((name) => !uniforms.has(name));
@@ -237,6 +239,7 @@ export function createRenderer(
     const scene = packScene(frame.scene);
     const camera = packCamera(frame.camera);
     const light = packLight(frame.scene);
+    const extraLights = packExtraLights(frame.scene);
     const view = viewModeCode(frame.options.viewMode);
     const redirects = clampRedirects(frame.options.maxRedirects);
 
@@ -262,6 +265,10 @@ export function createRenderer(
     gl.uniform3fv(uniform('uLightPosition'), light.position);
     gl.uniform3fv(uniform('uLightColor'), light.color);
     gl.uniform1f(uniform('uLightIntensity'), light.intensity);
+    gl.uniform3fv(uniform('uExtraLightPosition'), extraLights.position);
+    gl.uniform3fv(uniform('uExtraLightColor'), extraLights.color);
+    gl.uniform1fv(uniform('uExtraLightIntensity'), extraLights.intensity);
+    gl.uniform1i(uniform('uExtraLightCount'), extraLights.count);
     gl.uniform1f(uniform('uAmbient'), light.ambient);
     gl.uniform3fv(uniform('uSkyBottom'), light.skyBottom);
     gl.uniform3fv(uniform('uSkyTop'), light.skyTop);

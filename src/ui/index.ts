@@ -1,6 +1,6 @@
-import { MAX_REDIRECTS, type Mode, type ViewMode, type ViewState } from '../contracts.ts';
+import { MAX_LIGHTS, MAX_REDIRECTS, type LightAxis, type Mode, type Vec3, type ViewMode, type ViewState } from '../contracts.ts';
 import type { UIActions, UIHandle } from '../contracts.ts';
-import { CONTROL_RANGES } from '../scene/preset.ts';
+import { CONTROL_RANGES, EXTRA_LIGHT_TINTS } from '../scene/preset.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
 import { renderMathPanel } from './math-panel.ts';
@@ -82,7 +82,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   statusHelp.className = 'status-help';
   statusHelp.textContent = 'This line is the picture’s actual status. Starting means it is still computing. Ready and fallback are real pictures. An error means the picture is unavailable, and the schematic will not invent one.';
 
-  const controls = document.createElement('aside');
+  const controls = document.createElement('section');
   controls.className = 'controls';
   controls.setAttribute('aria-label', 'Parameters');
   const controlsTitle = document.createElement('h3');
@@ -107,17 +107,6 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
     'This steps the camera around the scene. The center sphere does not rotate, so there is no sphere-spin control.', CONTROL_RANGES.cameraYawDeg, value => {
       commitNumber(value, CONTROL_RANGES.cameraYawDeg, current?.controls.cameraYawDeg, snapped => actions.dispatch({ type: 'camera-yaw', value: snapped }));
     });
-  const more = document.createElement('details');
-  more.className = 'more';
-  const moreSummary = document.createElement('summary');
-  moreSummary.textContent = 'More controls';
-  const moreHelp = document.createElement('p');
-  moreHelp.className = 'more-help';
-  moreHelp.textContent = 'Light position, how many mirror bounces to follow, and picture checks.';
-  const light = rangeControl(signal, `${ns}-light`, 'Move the light',
-    'Slide the light sideways to change which surfaces it reaches.', CONTROL_RANGES.lightX, value => {
-      commitNumber(value, CONTROL_RANGES.lightX, current?.controls.lightX, snapped => actions.dispatch({ type: 'light-x', value: snapped }));
-    });
   const redirects = rangeControl(signal, `${ns}-bounces`, 'Mirror bounces to follow',
     '0 does not follow a mirror. 4 is the maximum. A mirror that needs another bounce is left black; the next hit is not guessed.',
     { min: 0, max: MAX_REDIRECTS, step: 1 }, value => {
@@ -133,8 +122,156 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       if (!mode || current?.controls.viewMode === mode) return;
       actions.dispatch({ type: 'view-mode', value: mode });
     });
-  more.append(moreSummary, moreHelp, light.wrap, redirects.wrap, viewMode.wrap);
-  controls.append(controlsTitle, controlsHint, target.wrap, mirror.wrap, camera.wrap, more);
+
+  // ---- Lights: add up to MAX_LIGHTS point lights, move each in 3D and set its strength.
+  const lightsHelp = document.createElement('p');
+  lightsHelp.className = 'panel-help';
+  lightsHelp.textContent = 'Every light casts its own hard shadow. Add a colored light, move it in 3D, and change how strong it is.';
+  const lightList = document.createElement('div');
+  lightList.className = 'light-list';
+  const addLight = document.createElement('button');
+  addLight.type = 'button';
+  addLight.className = 'add-light';
+  addLight.textContent = '+ Add a light';
+  addLight.addEventListener('click', () => {
+    if ((current?.controls.extraLights.length ?? 0) < MAX_LIGHTS - 1) actions.dispatch({ type: 'light-add' });
+  }, { signal });
+  type LightCard = { ranges: Record<LightAxis | 'intensity', { input: HTMLInputElement; output: HTMLElement }> };
+  let lightCards: LightCard[] = [];
+  let lightLayout = '';
+  let lightCardsLifecycle: AbortController | null = null;
+
+  function lightValues(view: ViewState, index: number): { x: number; y: number; z: number; intensity: number } {
+    if (index === 0) return { x: view.controls.lightX, y: view.controls.lightY, z: view.controls.lightZ, intensity: view.controls.lightIntensity };
+    return view.controls.extraLights[index - 1];
+  }
+
+  function buildLightCards(view: ViewState): void {
+    lightCardsLifecycle?.abort();
+    lightCardsLifecycle = new AbortController();
+    const cardSignal = AbortSignal.any([signal, lightCardsLifecycle.signal]);
+    const tints = [null, ...view.controls.extraLights.map(light => light.tint)];
+    lightCards = tints.map((tint, index) => {
+      const card = document.createElement('fieldset');
+      card.className = 'light-card';
+      const legend = document.createElement('legend');
+      const swatch = document.createElement('span');
+      swatch.className = 'light-swatch';
+      swatch.style.background = cssColor(tint === null ? [1, 0.94, 0.84] : EXTRA_LIGHT_TINTS[tint]);
+      legend.append(swatch, index === 0 ? 'Light 1 · main' : `Light ${index + 1} · ${TINT_NAMES[tint!] ?? 'extra'}`);
+      card.append(legend);
+      const id = `${ns}-light${index}`;
+      const axis = (key: LightAxis, label: string, range: { min: number; max: number; step: number }) =>
+        compactRange(cardSignal, `${id}-${key}`, label, range, value => {
+          if (!current) return;
+          commitNumber(value, range, lightValues(current, index)[key], snapped => actions.dispatch({ type: 'light-move', index, axis: key, value: snapped }));
+        });
+      const ranges = {
+        x: axis('x', 'Sideways (x)', CONTROL_RANGES.lightX),
+        y: axis('y', 'Height (y)', CONTROL_RANGES.lightY),
+        z: axis('z', 'Depth (z)', CONTROL_RANGES.lightZ),
+        intensity: compactRange(cardSignal, `${id}-intensity`, 'Intensity', CONTROL_RANGES.lightIntensity, value => {
+          if (!current) return;
+          commitNumber(value, CONTROL_RANGES.lightIntensity, lightValues(current, index).intensity,
+            snapped => actions.dispatch({ type: 'light-intensity', index, value: snapped }));
+        }),
+      };
+      card.append(ranges.x.wrap, ranges.y.wrap, ranges.z.wrap, ranges.intensity.wrap);
+      if (index > 0) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'button button-secondary remove-light';
+        remove.textContent = `Remove light ${index + 1}`;
+        remove.addEventListener('click', () => actions.dispatch({ type: 'light-remove', index }), { signal: cardSignal });
+        card.append(remove);
+      }
+      lightList.append(card);
+      return { ranges };
+    });
+  }
+
+  function syncLights(view: ViewState): void {
+    const layout = view.controls.extraLights.map(light => light.tint).join(',');
+    if (layout !== lightLayout || lightCards.length === 0) {
+      lightLayout = layout;
+      lightList.replaceChildren();
+      buildLightCards(view);
+      lightList.append(addLight);
+    }
+    const count = view.controls.extraLights.length + 1;
+    lightsTab.textContent = `Lights · ${count}`;
+    addLight.disabled = count >= MAX_LIGHTS;
+    addLight.textContent = count >= MAX_LIGHTS ? `All ${MAX_LIGHTS} lights are in use` : '+ Add a light';
+    lightCards.forEach((card, index) => {
+      const values = lightValues(view, index);
+      if (!values) return;
+      syncRange(card.ranges.x.input, card.ranges.x.output, values.x, values.x.toFixed(1));
+      syncRange(card.ranges.y.input, card.ranges.y.output, values.y, values.y.toFixed(1));
+      syncRange(card.ranges.z.input, card.ranges.z.output, values.z, values.z.toFixed(1));
+      syncRange(card.ranges.intensity.input, card.ranges.intensity.output, values.intensity, String(Math.round(values.intensity)));
+    });
+  }
+
+  // ---- Parameters as a full-width tabbed panel under the picture. Each tab lays its
+  // controls out across the width instead of stacking every option in one column.
+  // DOM order of the range inputs stays: object x, camera, main light x, ...
+  const tabList = document.createElement('div');
+  tabList.className = 'param-tabs';
+  tabList.setAttribute('role', 'tablist');
+  tabList.setAttribute('aria-label', 'Parameter groups');
+  const tabs: HTMLButtonElement[] = [];
+  const panels: HTMLElement[] = [];
+  function tabPanel(key: string, label: string, children: HTMLElement[], help?: HTMLElement): HTMLButtonElement {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'param-tab';
+    tab.id = `${ns}-tab-${key}`;
+    tab.setAttribute('role', 'tab');
+    tab.textContent = label;
+    const panel = document.createElement('div');
+    panel.className = `param-panel param-panel-${key}`;
+    panel.id = `${ns}-panel-${key}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tab.id);
+    tab.setAttribute('aria-controls', panel.id);
+    const grid = document.createElement('div');
+    grid.className = 'param-grid';
+    grid.append(...children);
+    panel.append(...(help ? [help] : []), grid);
+    tab.addEventListener('click', () => selectTab(tabs.indexOf(tab)), { signal });
+    tabs.push(tab);
+    panels.push(panel);
+    tabList.append(tab);
+    return tab;
+  }
+  function selectTab(index: number, focus = false): void {
+    tabs.forEach((tab, i) => {
+      const selected = i === index;
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      panels[i].hidden = !selected;
+    });
+    if (focus) tabs[index].focus();
+  }
+  tabList.addEventListener('keydown', event => {
+    const at = tabs.indexOf(document.activeElement as HTMLButtonElement);
+    if (at < 0) return;
+    const next = event.key === 'ArrowRight' ? (at + 1) % tabs.length
+      : event.key === 'ArrowLeft' ? (at - 1 + tabs.length) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    event.preventDefault();
+    selectTab(next, true);
+  }, { signal });
+  tabPanel('object', 'Object', [target.wrap, mirror.wrap]);
+  tabPanel('camera', 'Camera', [camera.wrap]);
+  const lightsTab = tabPanel('lights', 'Lights · 1', [lightList], lightsHelp);
+  tabPanel('picture', 'Picture', [redirects.wrap, viewMode.wrap]);
+  selectTab(0);
+  const controlsHead = document.createElement('div');
+  controlsHead.className = 'controls-head';
+  controlsHead.append(controlsTitle, controlsHint);
+  controls.append(controlsHead, tabList, ...panels);
 
   const explain = document.createElement('section');
   explain.className = 'explain';
@@ -174,7 +311,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   footer.className = 'credits';
   const limits = document.createElement('p');
   limits.className = 'limits';
-  limits.textContent = 'Version 1 computes spheres, planes, one light, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention.';
+  limits.textContent = 'Version 1 computes spheres, planes, up to four point lights, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention.';
   const credits = document.createElement('a');
   credits.href = './notices/credits.html';
   credits.textContent = 'Credits and limitations';
@@ -192,9 +329,6 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const pictureCaption = document.createElement('figcaption');
   pictureCaption.append(figureLabel('Figure 1.1'), 'The scene, ray traced live on the GPU (WebGL2) at up to 640 × 360 pixels. ', pictureHelp);
   pictureFigure.append(frame, pictureCaption);
-  const stageGrid = document.createElement('div');
-  stageGrid.className = 'stage-grid';
-  stageGrid.append(pictureFigure, controls);
   const pixelSelect = document.createElement('fieldset');
   pixelSelect.className = 'pixel-select';
   const pixelLegend = document.createElement('legend');
@@ -205,7 +339,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const inspectRow = document.createElement('div');
   inspectRow.className = 'inspect-row';
   inspectRow.append(pixelSelect, actionsRow);
-  picture.append(lead, stageGrid, inspectRow, actionHelp, status, statusHelp);
+  picture.append(lead, pictureFigure, inspectRow, status, controls, actionHelp, statusHelp);
 
   // ---- Chapter 2: following one pixel.
   const follow = chapter('ch-2', '2', 'Follow one pixel');
@@ -307,7 +441,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       status.dataset.status = view.status;
       record.textContent = view.inspection ? JSON.stringify(view.inspection) : '';
       syncRange(target.input, target.output, view.controls.targetX, view.controls.targetX.toFixed(2));
-      syncRange(light.input, light.output, view.controls.lightX, view.controls.lightX.toFixed(1));
+      syncLights(view);
       syncRange(camera.input, camera.output, view.controls.cameraYawDeg, `${Math.round(view.controls.cameraYawDeg)}°`);
       syncRange(redirects.input, redirects.output, view.controls.maxRedirects, String(view.controls.maxRedirects));
       syncRadios(mirror.inputs, view.controls.mirrorMode);
@@ -546,6 +680,28 @@ function rangeControl(
   note.textContent = help;
   wrap.append(head, input, note);
   return { wrap, input, output };
+}
+
+const TINT_NAMES = ['blue', 'pink', 'green'];
+
+/** Linear RGB to a CSS sRGB color, for the light swatches. */
+function cssColor(linear: Vec3): string {
+  const encode = (c: number) => Math.round(255 * Math.min(1, c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055));
+  return `rgb(${linear.map(encode).join(' ')})`;
+}
+
+/** A range control without a help line, for the dense per-light cards. */
+function compactRange(
+  signal: AbortSignal,
+  id: string,
+  label: string,
+  range: { min: number; max: number; step: number },
+  commit: (value: number) => void,
+): { wrap: HTMLElement; input: HTMLInputElement; output: HTMLElement } {
+  const control = rangeControl(signal, id, label, '', range, commit);
+  control.wrap.classList.add('control-compact');
+  control.wrap.querySelector('.control-help')?.remove();
+  return control;
 }
 
 function radioControl(

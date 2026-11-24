@@ -28,7 +28,7 @@ test('selection uses the host content rectangle and arrow keys move one pixel', 
   assert.equal(snapToStep(Number.NaN, 0, 4, 1), null);
 });
 
-test('oblique projection keeps sideways, up, and depth distinguishable', () => {
+test('3D view keeps sideways, up, and depth distinguishable, like a textbook frame', () => {
   assert.match(SCHEMATIC_NOTE, /not a second camera/);
   assert.match(SCHEMATIC_NOTE, /depth/);
   assert.match(CANVAS_LABEL, /\+Z depth/);
@@ -36,9 +36,13 @@ test('oblique projection keeps sideways, up, and depth distinguishable', () => {
   const side = project([1, 0, 0]);
   const up = project([0, 1, 0]);
   const depth = project([0, 0, 1]);
-  assert.ok(side.x > origin.x);
-  assert.ok(up.x > origin.x && up.y > origin.y);
-  assert.ok(depth.y > origin.y && Math.abs(depth.x - origin.x) < 1e-9);
+  assert.ok(side.x > origin.x && Math.abs(side.x - origin.x) > Math.abs(side.y - origin.y), '+x runs mostly sideways');
+  assert.ok(up.y > origin.y && Math.abs(up.x - origin.x) < 1e-12, '+y is straight up');
+  assert.ok(depth.x > origin.x && depth.y > origin.y, '+z recedes up and to the right');
+  // A pure rotation: unit axes keep a common scale in 3D, so a sphere projects to a circle.
+  const [a, b, c] = [side, up, depth].map(p => [p.x - origin.x, p.y - origin.y]);
+  const gram = [[a[0] ** 2 + b[0] ** 2 + c[0] ** 2, a[0] * a[1] + b[0] * b[1] + c[0] * c[1]], [0, a[1] ** 2 + b[1] ** 2 + c[1] ** 2]];
+  assert.ok(Math.abs(gram[0][0] - 1) < 1e-12 && Math.abs(gram[1][1] - 1) < 1e-12 && Math.abs(gram[0][1]) < 1e-12);
   const map = screenMapper([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], 400, 300, 20);
   assert.ok(map);
   const screenOrigin = map([0, 0, 0]);
@@ -47,9 +51,8 @@ test('oblique projection keeps sideways, up, and depth distinguishable', () => {
   const screenDepth = map([0, 0, 1]);
   assert.ok(screenSide.x > screenOrigin.x);
   assert.ok(Math.abs(screenSide.x - screenOrigin.x) > Math.abs(screenSide.y - screenOrigin.y));
-  assert.ok(screenUp.y < screenOrigin.y && screenUp.x > screenOrigin.x);
-  assert.ok(screenDepth.y < screenOrigin.y);
-  assert.ok(Math.abs(screenDepth.y - screenOrigin.y) > Math.abs(screenDepth.x - screenOrigin.x));
+  assert.ok(screenUp.y < screenOrigin.y && Math.abs(screenUp.x - screenOrigin.x) < 1e-9);
+  assert.ok(screenDepth.y < screenOrigin.y && screenDepth.x > screenOrigin.x);
   assert.equal(screenMapper([], 100, 100, 10), null);
 });
 

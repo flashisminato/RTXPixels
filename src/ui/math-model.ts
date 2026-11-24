@@ -83,10 +83,20 @@ export type ShadeStep = {
   selfBlocked: boolean;
   visibility: 0 | 1;
   albedo: Vec3; ambient: number; lightColor: Vec3; intensity: number;
-  /** a rho + V (rho (.) c_L) I max(N.L, 0) / (pi max(d^2, 0.01)), as in contract v1 */
+  /** The extra lights' direct terms at the same surface, in light order (empty with one light). */
+  extraLights: ExtraLightTerm[];
+  /** a rho + V (rho (.) c_L) I max(N.L, 0) / (pi max(d^2, 0.01)), plus each extra light's term */
   color: Vec3;
   /** max |component| difference from the recorded linear color (when this surface ends the path) */
   colorError: number | null;
+};
+
+export type ExtraLightTerm = {
+  index: number; position: Vec3; lightColor: Vec3; intensity: number;
+  nDotL: number; distanceSquared: number; blocked: boolean; blockerId: string | null;
+  visibility: 0 | 1;
+  /** V (rho (.) c_L) I max(N.L, 0) / (pi max(d^2, 0.01)) for this light */
+  direct: Vec3;
 };
 
 export type EndStep =
@@ -210,7 +220,9 @@ function reflectStep(event: Extract<TraceEvent, { kind: 'reflect' }>, order: num
   };
 }
 
-function shadeStep(view: ViewState, surface: HitStep, event: Extract<TraceEvent, { kind: 'shadow' }>, endsPath: boolean): ShadeStep {
+type ShadowEvent = Extract<TraceEvent, { kind: 'shadow' }>;
+
+function shadeStep(view: ViewState, surface: HitStep, event: ShadowEvent, extras: ShadowEvent[], endsPath: boolean): ShadeStep {
   const { scene } = view;
   const lightPosition = scene.light.position;
   const toLightVector = sub(lightPosition, event.from);
@@ -222,6 +234,19 @@ function shadeStep(view: ViewState, surface: HitStep, event: Extract<TraceEvent,
   const irradiance = visibility * scene.light.intensity * event.nDotL / Math.max(distanceSquared, 0.01);
   const color: Vec3 = [0, 1, 2].map(i =>
     scene.ambient * albedo[i] + albedo[i] / Math.PI * scene.light.color[i] * irradiance) as Vec3;
+  const extraLights: ExtraLightTerm[] = [];
+  for (const extra of extras) {
+    const light = scene.extraLights?.[(extra.lightIndex ?? 0) - 1];
+    if (!light) continue;
+    const offset = sub(light.position, extra.from);
+    const d2 = dot(offset, offset);
+    const v: 0 | 1 = extra.blocked ? 0 : 1;
+    const e = v * light.intensity * extra.nDotL / Math.max(d2, 0.01);
+    const direct = [0, 1, 2].map(i => albedo[i] / Math.PI * light.color[i] * e) as Vec3;
+    for (let i = 0; i < 3; i++) color[i] += direct[i];
+    extraLights.push({ index: extra.lightIndex!, position: light.position, lightColor: light.color, intensity: light.intensity,
+      nDotL: extra.nDotL, distanceSquared: d2, blocked: extra.blocked, blockerId: extra.blockerId, visibility: v, direct });
+  }
   const recorded = view.inspection!.result.linearColor;
   return {
     surface,
@@ -238,6 +263,7 @@ function shadeStep(view: ViewState, surface: HitStep, event: Extract<TraceEvent,
     selfBlocked: event.blocked && event.blockerId === surface.objectId,
     visibility,
     albedo, ambient: scene.ambient, lightColor: scene.light.color, intensity: scene.light.intensity,
+    extraLights,
     color,
     colorError: endsPath ? maxDiff(color, recorded) : null,
   };
@@ -269,6 +295,8 @@ export function buildMathStory(view: ViewState | null): MathStoryResult {
   const reflects: ReflectStep[] = [];
   let shade: ShadeStep | null = null;
   let order = 0;
+  let primaryShadow: ShadowEvent | null = null;
+  const extraShadows: ShadowEvent[] = [];
 
   const last = events.at(-1);
   const endReason = last?.kind === 'end' ? last.reason : 'surface';
@@ -277,8 +305,13 @@ export function buildMathStory(view: ViewState | null): MathStoryResult {
     if (event.kind === 'hit') hits.push(hitStep(view.scene, event, ++order));
     else if (event.kind === 'reflect') reflects.push(reflectStep(event, ++order));
     else if (event.kind === 'shadow' && hits.length > 0) {
-      shade = shadeStep(view, hits[hits.length - 1], event, endReason === 'surface');
+      if (event.lightIndex) extraShadows.push(event);
+      else primaryShadow = event;
     }
+  }
+  // Shadow events of all lights belong to the last surface, which ends the path.
+  if (primaryShadow && hits.length > 0) {
+    shade = shadeStep(view, hits[hits.length - 1], primaryShadow, extraShadows, endReason === 'surface');
   }
 
   let end: EndStep;

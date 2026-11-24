@@ -17,6 +17,9 @@ export const PARALLEL_EPS = 1e-6;
 export const MAX_OBJECTS = 8;
 export const MAX_MATERIALS = 8;
 
+/** Extra point lights beyond the main one (contract MAX_LIGHTS - 1). */
+export const MAX_EXTRA_LIGHTS = 3;
+
 /** Hard ceiling on the encounter loop compiled into the shader. */
 export const MAX_REDIRECTS = 4;
 

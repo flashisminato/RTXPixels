@@ -363,7 +363,7 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
         frac(row(paren(row(v('\u03c1'), hadamard(), vs('c', 'L'))), mi('I'), space(0.2), fn('max', row(ref('phi', dotted(ref('N', v('N')), ref('L', v('L')))), comma(), mn('0')))),
           row(mi('\u03c0'), mo('\u2062'), space(0.2), fn('max', row(sq(ref('d', mi('d'))), comma(), mn('0.01')))))))]] },
       { kind: 'assume', items: [
-        ['One point light: shadows are hard, so ', X(mi('V'), mo('\u2208'), row(fence('{'), mn('0'), comma(), mn('1'), fence('}'))), '.'],
+        [sh.extraLights.length > 0 ? `${sh.extraLights.length + 1} point lights, each checked for its own shadow and added up (the law shows the main light): shadows are hard, so ` : 'One point light: shadows are hard, so ', X(mi('V'), mo('\u2208'), row(fence('{'), mn('0'), comma(), mn('1'), fence('}'))), '.'],
         ['The surface is Lambertian (ideally matte): it reflects ', X(v('\u03c1'), slash(), mi('\u03c0')), ' of the arriving light in every direction.'],
         ['The constant ambient term ', X(mi('a'), v('\u03c1')), ' stands in for light bouncing between surfaces, which is not computed.'],
         [X(hadamard()), ' multiplies colors channel by channel; ', X(sq(mi('d')), mo('<'), mn('0.01')), ' is clamped to avoid dividing by zero.'],
@@ -380,6 +380,12 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
         math('shading numbers', v('c'), eq(), row(num(sh.ambient, 2), tuple(sh.albedo), plus(), mn(String(sh.visibility)), cdot(),
           frac(row(paren(row(tuple(sh.albedo), hadamard(), tuple(sh.lightColor, 2))), cdot(), mn(String(sh.intensity)), cdot(), num(sh.nDotL, 4)),
             row(mi('\u03c0'), cdot(), num(Math.max(sh.distanceSquared, 0.01), 3))))),
+        // Each extra light adds its own shadow-checked term with the same law.
+        ...sh.extraLights.map(e => math(`light ${e.index + 1} term`, sub(v('c'), mu(`light ${e.index + 1}`)), eq(),
+          row(mn(String(e.visibility)), cdot(),
+            frac(row(paren(row(tuple(sh.albedo), hadamard(), tuple(e.lightColor, 2))), cdot(), mn(String(e.intensity)), cdot(), num(e.nDotL, 4)),
+              row(mi('\u03c0'), cdot(), num(Math.max(e.distanceSquared, 0.01), 3)))),
+          eq(), tuple(e.direct, 4))),
         math('shading result', v('c'), eq(), tuple(sh.color, 4)),
       ] },
       { kind: 'result', text: ['Linear color ', V('c'), ' = ', X(tuple(sh.color, 4)), ', with ', X(mi('V'), eq(), mn(String(sh.visibility))),
