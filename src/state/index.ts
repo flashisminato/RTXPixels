@@ -1,5 +1,5 @@
 import type { Action, Inspection, Scene, ViewState } from '../contracts.ts';
-import { createPreset, initialControls } from '../scene/preset.ts';
+import { createPreset, initialControls, newExtraLight } from '../scene/preset.ts';
 import { validateControls, validateScene } from './validation.ts';
 
 export { validateControls, validateScene } from './validation.ts';
@@ -35,10 +35,44 @@ export function createStore(initialScene: Scene = createPreset()) {
     },
     dispatch(action: Action): void {
       if (!action || typeof action !== 'object') throw new TypeError('Action must be an object.');
-      const controls = { ...view.controls };
+      const controls = { ...view.controls, extraLights: view.controls.extraLights.map(light => ({ ...light })) };
+      const lightIndex = (index: unknown): number => {
+        if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index > controls.extraLights.length) {
+          throw new RangeError('Light index is out of range.');
+        }
+        return index;
+      };
       switch (action.type) {
         case 'target-x': controls.targetX = action.value; break;
         case 'light-x': controls.lightX = action.value; break;
+        case 'light-move': {
+          const index = lightIndex(action.index);
+          if (action.axis !== 'x' && action.axis !== 'y' && action.axis !== 'z') throw new RangeError('Unsupported light axis.');
+          if (index === 0) {
+            if (action.axis === 'x') controls.lightX = action.value;
+            else if (action.axis === 'y') controls.lightY = action.value;
+            else controls.lightZ = action.value;
+          } else controls.extraLights[index - 1][action.axis] = action.value;
+          break;
+        }
+        case 'light-intensity': {
+          const index = lightIndex(action.index);
+          if (index === 0) controls.lightIntensity = action.value;
+          else controls.extraLights[index - 1].intensity = action.value;
+          break;
+        }
+        case 'light-add': {
+          const light = newExtraLight(controls.extraLights);
+          if (!light) throw new RangeError('The scene already has the maximum number of lights.');
+          controls.extraLights.push(light);
+          break;
+        }
+        case 'light-remove': {
+          const index = lightIndex(action.index);
+          if (index === 0) throw new RangeError('The main light cannot be removed.');
+          controls.extraLights.splice(index - 1, 1);
+          break;
+        }
         case 'camera-yaw': controls.cameraYawDeg = action.value; break;
         case 'mirror-mode': controls.mirrorMode = action.value; break;
         case 'redirects': controls.maxRedirects = action.value; break;

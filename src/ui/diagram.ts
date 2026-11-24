@@ -251,10 +251,12 @@ function render(plan: DiagramPlan | null, message: string, scene: Scene | null, 
       f.cross(at, 5);
       pending.push({ at, runs: [mark.label], color: '#62666b', size: 13, candidates: aroundPoint(12) });
     } else if (mark.role === 'light') {
-      const bulb = f.ref('light', () => { f.circle(at, 22, 'transparent', 'none'); f.bulb(at); });
-      if (handles) makeHandle(bulb, 'light', 'Light position', handles.lightX, handles.ranges.lightX);
+      // Only the main light ('light') is a drag handle; extra lights are labelled marks.
+      const main = mark.label === 'light';
+      const bulb = f.ref(main ? 'light' : `light-${mark.label.replace(/\s+/g, '-')}`, () => { f.circle(at, 22, 'transparent', 'none'); f.bulb(at); });
+      if (handles && main) makeHandle(bulb, 'light', 'Light position', handles.lightX, handles.ranges.lightX);
       obstacles.boxes.push({ x0: at.x - 22, y0: at.y - 22, x1: at.x + 22, y1: at.y + 18 });
-      pending.push({ at, runs: ['light'], color: '#62666b', size: 13, candidates: aroundPoint(26) });
+      pending.push({ at, runs: [mark.label], color: '#62666b', size: 13, candidates: aroundPoint(26) });
     } else {
       f.dot(at, COLORS.ink, 4);
       pending.push({ at, runs: ['camera'], color: '#62666b', size: 13, candidates: aroundPoint(12) });

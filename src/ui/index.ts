@@ -1,6 +1,6 @@
-import { MAX_REDIRECTS, type Mode, type ViewMode, type ViewState } from '../contracts.ts';
+import { MAX_LIGHTS, MAX_REDIRECTS, type LightAxis, type Mode, type Vec3, type ViewMode, type ViewState } from '../contracts.ts';
 import type { UIActions, UIHandle } from '../contracts.ts';
-import { CONTROL_RANGES } from '../scene/preset.ts';
+import { CONTROL_RANGES, EXTRA_LIGHT_TINTS } from '../scene/preset.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
 import { renderMathPanel } from './math-panel.ts';
@@ -134,7 +134,102 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       actions.dispatch({ type: 'view-mode', value: mode });
     });
   more.append(moreSummary, moreHelp, light.wrap, redirects.wrap, viewMode.wrap);
-  controls.append(controlsTitle, controlsHint, target.wrap, mirror.wrap, camera.wrap, more);
+
+  // ---- Lights: add up to MAX_LIGHTS point lights, move each in 3D and set its strength.
+  // Placed after "More controls" so the first four range inputs keep their order.
+  const lightsBox = document.createElement('details');
+  lightsBox.className = 'more lights';
+  lightsBox.open = true;
+  const lightsSummary = document.createElement('summary');
+  const lightsHelp = document.createElement('p');
+  lightsHelp.className = 'more-help';
+  lightsHelp.textContent = 'Every light casts its own hard shadow. Add a colored light, move it in 3D, and change how strong it is.';
+  const lightList = document.createElement('div');
+  lightList.className = 'light-list';
+  const addLight = document.createElement('button');
+  addLight.type = 'button';
+  addLight.className = 'button button-secondary add-light';
+  addLight.textContent = '+ Add a light';
+  addLight.addEventListener('click', () => {
+    if ((current?.controls.extraLights.length ?? 0) < MAX_LIGHTS - 1) actions.dispatch({ type: 'light-add' });
+  }, { signal });
+  lightsBox.append(lightsSummary, lightsHelp, lightList, addLight);
+  type LightCard = { ranges: Record<LightAxis | 'intensity', { input: HTMLInputElement; output: HTMLElement }> };
+  let lightCards: LightCard[] = [];
+  let lightLayout = '';
+  let lightCardsLifecycle: AbortController | null = null;
+
+  function lightValues(view: ViewState, index: number): { x: number; y: number; z: number; intensity: number } {
+    if (index === 0) return { x: view.controls.lightX, y: view.controls.lightY, z: view.controls.lightZ, intensity: view.controls.lightIntensity };
+    return view.controls.extraLights[index - 1];
+  }
+
+  function buildLightCards(view: ViewState): void {
+    lightCardsLifecycle?.abort();
+    lightCardsLifecycle = new AbortController();
+    const cardSignal = AbortSignal.any([signal, lightCardsLifecycle.signal]);
+    const tints = [null, ...view.controls.extraLights.map(light => light.tint)];
+    lightCards = tints.map((tint, index) => {
+      const card = document.createElement('fieldset');
+      card.className = 'light-card';
+      const legend = document.createElement('legend');
+      const swatch = document.createElement('span');
+      swatch.className = 'light-swatch';
+      swatch.style.background = cssColor(tint === null ? [1, 0.94, 0.84] : EXTRA_LIGHT_TINTS[tint]);
+      legend.append(swatch, index === 0 ? 'Light 1 · main' : `Light ${index + 1} · ${TINT_NAMES[tint!] ?? 'extra'}`);
+      card.append(legend);
+      const id = `${ns}-light${index}`;
+      const axis = (key: LightAxis, label: string, range: { min: number; max: number; step: number }) =>
+        compactRange(cardSignal, `${id}-${key}`, label, range, value => {
+          if (!current) return;
+          commitNumber(value, range, lightValues(current, index)[key], snapped => actions.dispatch({ type: 'light-move', index, axis: key, value: snapped }));
+        });
+      const ranges = {
+        x: axis('x', 'Sideways (x)', CONTROL_RANGES.lightX),
+        y: axis('y', 'Height (y)', CONTROL_RANGES.lightY),
+        z: axis('z', 'Depth (z)', CONTROL_RANGES.lightZ),
+        intensity: compactRange(cardSignal, `${id}-intensity`, 'Intensity', CONTROL_RANGES.lightIntensity, value => {
+          if (!current) return;
+          commitNumber(value, CONTROL_RANGES.lightIntensity, lightValues(current, index).intensity,
+            snapped => actions.dispatch({ type: 'light-intensity', index, value: snapped }));
+        }),
+      };
+      card.append(ranges.x.wrap, ranges.y.wrap, ranges.z.wrap, ranges.intensity.wrap);
+      if (index > 0) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'button button-secondary remove-light';
+        remove.textContent = `Remove light ${index + 1}`;
+        remove.addEventListener('click', () => actions.dispatch({ type: 'light-remove', index }), { signal: cardSignal });
+        card.append(remove);
+      }
+      lightList.append(card);
+      return { ranges };
+    });
+  }
+
+  function syncLights(view: ViewState): void {
+    const layout = view.controls.extraLights.map(light => light.tint).join(',');
+    if (layout !== lightLayout || lightCards.length === 0) {
+      lightLayout = layout;
+      lightList.replaceChildren();
+      buildLightCards(view);
+    }
+    const count = view.controls.extraLights.length + 1;
+    lightsSummary.textContent = `Lights (${count} of ${MAX_LIGHTS})`;
+    addLight.disabled = count >= MAX_LIGHTS;
+    addLight.textContent = count >= MAX_LIGHTS ? `All ${MAX_LIGHTS} lights are in use` : '+ Add a light';
+    lightCards.forEach((card, index) => {
+      const values = lightValues(view, index);
+      if (!values) return;
+      syncRange(card.ranges.x.input, card.ranges.x.output, values.x, values.x.toFixed(1));
+      syncRange(card.ranges.y.input, card.ranges.y.output, values.y, values.y.toFixed(1));
+      syncRange(card.ranges.z.input, card.ranges.z.output, values.z, values.z.toFixed(1));
+      syncRange(card.ranges.intensity.input, card.ranges.intensity.output, values.intensity, String(Math.round(values.intensity)));
+    });
+  }
+
+  controls.append(controlsTitle, controlsHint, target.wrap, mirror.wrap, camera.wrap, more, lightsBox);
 
   const explain = document.createElement('section');
   explain.className = 'explain';
@@ -174,7 +269,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   footer.className = 'credits';
   const limits = document.createElement('p');
   limits.className = 'limits';
-  limits.textContent = 'Version 1 computes spheres, planes, one light, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention.';
+  limits.textContent = 'Version 1 computes spheres, planes, up to four point lights, hard shadows, and perfect mirrors, with at most four bounces. It does not compute glass, soft shadows, or light that bounces off matte surfaces. Ray tracing is an established technique, not our invention.';
   const credits = document.createElement('a');
   credits.href = './notices/credits.html';
   credits.textContent = 'Credits and limitations';
@@ -308,6 +403,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
       record.textContent = view.inspection ? JSON.stringify(view.inspection) : '';
       syncRange(target.input, target.output, view.controls.targetX, view.controls.targetX.toFixed(2));
       syncRange(light.input, light.output, view.controls.lightX, view.controls.lightX.toFixed(1));
+      syncLights(view);
       syncRange(camera.input, camera.output, view.controls.cameraYawDeg, `${Math.round(view.controls.cameraYawDeg)}°`);
       syncRange(redirects.input, redirects.output, view.controls.maxRedirects, String(view.controls.maxRedirects));
       syncRadios(mirror.inputs, view.controls.mirrorMode);
@@ -546,6 +642,28 @@ function rangeControl(
   note.textContent = help;
   wrap.append(head, input, note);
   return { wrap, input, output };
+}
+
+const TINT_NAMES = ['blue', 'pink', 'green'];
+
+/** Linear RGB to a CSS sRGB color, for the light swatches. */
+function cssColor(linear: Vec3): string {
+  const encode = (c: number) => Math.round(255 * Math.min(1, c <= 0.0031308 ? 12.92 * c : 1.055 * c ** (1 / 2.4) - 0.055));
+  return `rgb(${linear.map(encode).join(' ')})`;
+}
+
+/** A range control without a help line, for the dense per-light cards. */
+function compactRange(
+  signal: AbortSignal,
+  id: string,
+  label: string,
+  range: { min: number; max: number; step: number },
+  commit: (value: number) => void,
+): { wrap: HTMLElement; input: HTMLInputElement; output: HTMLElement } {
+  const control = rangeControl(signal, id, label, '', range, commit);
+  control.wrap.classList.add('control-compact');
+  control.wrap.querySelector('.control-help')?.remove();
+  return control;
 }
 
 function radioControl(

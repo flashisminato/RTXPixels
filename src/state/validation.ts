@@ -1,6 +1,6 @@
-import { MAX_MATERIALS, MAX_OBJECTS, MAX_REDIRECTS } from '../contracts.ts';
+import { MAX_LIGHTS, MAX_MATERIALS, MAX_OBJECTS, MAX_REDIRECTS } from '../contracts.ts';
 import type { Controls, Scene } from '../contracts.ts';
-import { CONTROL_RANGES } from '../scene/preset.ts';
+import { CONTROL_RANGES, EXTRA_LIGHT_TINTS } from '../scene/preset.ts';
 
 function record(value: unknown, name: string): Record<string, unknown> {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${name} must be an object.`);
@@ -22,6 +22,27 @@ export function validateControls(value: unknown): asserts value is Controls {
   if (controls.viewMode !== 'beauty' && controls.viewMode !== 'hit' && controls.viewMode !== 'albedo') throw new RangeError('Unsupported view mode.');
   finiteRange(controls.maxRedirects, 0, MAX_REDIRECTS, 'Redirect budget');
   if (!Number.isInteger(controls.maxRedirects)) throw new RangeError('Redirect budget must be an integer.');
+  if (!Array.isArray(controls.extraLights) || controls.extraLights.length > MAX_LIGHTS - 1) {
+    throw new RangeError(`At most ${MAX_LIGHTS - 1} extra lights are supported.`);
+  }
+  const tints = new Set<number>();
+  for (const entry of controls.extraLights) {
+    const light = record(entry, 'Extra light');
+    finiteRange(light.x, CONTROL_RANGES.lightX.min, CONTROL_RANGES.lightX.max, 'Extra light x');
+    finiteRange(light.y, CONTROL_RANGES.lightY.min, CONTROL_RANGES.lightY.max, 'Extra light y');
+    finiteRange(light.z, CONTROL_RANGES.lightZ.min, CONTROL_RANGES.lightZ.max, 'Extra light z');
+    finiteRange(light.intensity, CONTROL_RANGES.lightIntensity.min, CONTROL_RANGES.lightIntensity.max, 'Extra light intensity');
+    finiteRange(light.tint, 0, EXTRA_LIGHT_TINTS.length - 1, 'Extra light tint');
+    if (!Number.isInteger(light.tint) || tints.has(light.tint)) throw new RangeError('Extra light tints must be unique integers.');
+    tints.add(light.tint);
+  }
+}
+
+function validateLight(value: unknown, name: string): void {
+  const light = record(value, name);
+  vector(light.position, `${name} position`);
+  vector(light.color, `${name} color`, 0, Number.MAX_VALUE);
+  finiteRange(light.intensity, 0, Number.MAX_VALUE, `${name} intensity`);
 }
 
 export function validateScene(value: unknown): asserts value is Scene {
@@ -54,10 +75,13 @@ export function validateScene(value: unknown): asserts value is Scene {
   vector(camera.target, 'Camera target');
   if (camera.position.every((component, i) => component === (camera.target as number[])[i])) throw new RangeError('Camera target must differ from its position.');
   finiteRange(camera.fovYDeg, 20, 100, 'Vertical FOV');
-  const light = record(scene.light, 'Light');
-  vector(light.position, 'Light position');
-  vector(light.color, 'Light color', 0, Number.MAX_VALUE);
-  finiteRange(light.intensity, 0, Number.MAX_VALUE, 'Light intensity');
+  validateLight(scene.light, 'Light');
+  if (scene.extraLights !== undefined) {
+    if (!Array.isArray(scene.extraLights) || scene.extraLights.length > MAX_LIGHTS - 1) {
+      throw new RangeError(`At most ${MAX_LIGHTS - 1} extra lights are supported.`);
+    }
+    for (const light of scene.extraLights) validateLight(light, 'Extra light');
+  }
   finiteRange(scene.ambient, 0, 1, 'Ambient');
   vector(scene.skyBottom, 'Sky bottom', 0, Number.MAX_VALUE);
   vector(scene.skyTop, 'Sky top', 0, Number.MAX_VALUE);

@@ -1,5 +1,5 @@
 import { EPS, FAR, PLANE_PARALLEL_THRESHOLD } from '../contracts.ts';
-import type { CameraBasis, Hit, Ray, Scene, TraceEvent, TraceOptions, TraceResult, Vec3, ViewMode } from '../contracts.ts';
+import type { CameraBasis, Hit, PointLight, Ray, Scene, TraceEvent, TraceOptions, TraceResult, Vec3, ViewMode } from '../contracts.ts';
 import { add, clamp, cross, dot, normalize, reflect, scale, sub } from './vector.ts';
 
 export function makeCameraBasis(scene: Scene): CameraBasis {
@@ -57,6 +57,11 @@ export function nearestHit(scene: Scene, inputRay: Ray, tMin: number, tMax: numb
   return closest;
 }
 
+/** The main light first (index 0), then any extra lights in order. */
+export function sceneLights(scene: Scene): PointLight[] {
+  return scene.extraLights?.length ? [scene.light, ...scene.extraLights] : [scene.light];
+}
+
 function sky(scene: Scene, direction: Vec3): Vec3 {
   const t = clamp(0.5 * (direction[1] + 1), 0, 1);
   return add(scale(scene.skyBottom, 1 - t), scale(scene.skyTop, t));
@@ -92,17 +97,23 @@ function trace(scene: Scene, primary: Ray, options: TraceOptions, events?: Trace
       redirects++;
       continue;
     }
-    const toLight = sub(scene.light.position, offset);
-    const distanceSquared = dot(toLight, toLight);
-    const distance = Math.sqrt(distanceSquared);
-    const lightDirection: Vec3 = distance > 0 ? scale(toLight, 1 / distance) : [0, 0, 0];
-    const nDotL = Math.max(dot(hit.normal, lightDirection), 0);
-    const blocker = distance > EPS ? nearestHit(scene, { origin: offset, direction: lightDirection }, EPS, distance) : null;
-    events?.push({ kind: 'shadow', from: offset, toLight: lightDirection, blocked: blocker !== null,
-      blockerId: blocker?.objectId ?? null, blockerPoint: blocker?.point ?? null, nDotL });
-    const irradiance = blocker ? 0 : scene.light.intensity * nDotL / Math.max(distanceSquared, 0.01);
-    const color = material.albedo.map((channel, i) =>
-      scene.ambient * channel + channel / Math.PI * scene.light.color[i] * irradiance) as Vec3;
+    // Ambient once, then each point light adds its own shadow-checked direct term.
+    const color = material.albedo.map(channel => scene.ambient * channel) as Vec3;
+    const lights = sceneLights(scene);
+    for (let index = 0; index < lights.length; index++) {
+      const light = lights[index];
+      const toLight = sub(light.position, offset);
+      const distanceSquared = dot(toLight, toLight);
+      const distance = Math.sqrt(distanceSquared);
+      const lightDirection: Vec3 = distance > 0 ? scale(toLight, 1 / distance) : [0, 0, 0];
+      const nDotL = Math.max(dot(hit.normal, lightDirection), 0);
+      const blocker = distance > EPS ? nearestHit(scene, { origin: offset, direction: lightDirection }, EPS, distance) : null;
+      events?.push({ kind: 'shadow', from: offset, toLight: lightDirection, blocked: blocker !== null,
+        blockerId: blocker?.objectId ?? null, blockerPoint: blocker?.point ?? null, nDotL,
+        ...(index > 0 ? { lightIndex: index } : {}) });
+      const irradiance = blocker ? 0 : light.intensity * nDotL / Math.max(distanceSquared, 0.01);
+      for (let i = 0; i < 3; i++) color[i] += material.albedo[i] / Math.PI * light.color[i] * irradiance;
+    }
     events?.push({ kind: 'end', reason: 'surface', from: hit.point, direction: ray.direction });
     return color;
   }

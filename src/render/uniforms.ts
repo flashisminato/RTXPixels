@@ -2,6 +2,7 @@ import type { CameraBasis, Material, Scene, SceneObject, ViewMode } from '../con
 import {
   MAX_MATERIALS,
   MAX_OBJECTS,
+  MAX_EXTRA_LIGHTS,
   MAX_REDIRECTS,
   MODE_MATTE,
   MODE_MIRROR,
@@ -261,4 +262,37 @@ export function packLight(scene: Scene): {
     skyBottom: assertFiniteVec3(scene.skyBottom, 'skyBottom'),
     skyTop: assertFiniteVec3(scene.skyTop, 'skyTop'),
   };
+}
+
+export type PackedExtraLights = {
+  position: Float32Array;   // MAX_EXTRA_LIGHTS * 3
+  color: Float32Array;      // MAX_EXTRA_LIGHTS * 3
+  intensity: Float32Array;  // MAX_EXTRA_LIGHTS
+  count: number;
+};
+
+/** Validate and flatten the optional extra lights. Unused slots stay zero. */
+export function packExtraLights(scene: Scene): PackedExtraLights {
+  const extras: unknown = (scene as { extraLights?: unknown }).extraLights ?? [];
+  if (!Array.isArray(extras)) {
+    throw new SceneValidationError('scene.extraLights must be an array when present');
+  }
+  if (extras.length > MAX_EXTRA_LIGHTS) {
+    throw new SceneValidationError(`${extras.length} extra lights exceeds MAX_EXTRA_LIGHTS=${MAX_EXTRA_LIGHTS}`);
+  }
+  const position = new Float32Array(MAX_EXTRA_LIGHTS * 3);
+  const color = new Float32Array(MAX_EXTRA_LIGHTS * 3);
+  const intensity = new Float32Array(MAX_EXTRA_LIGHTS);
+  extras.forEach((light: { position?: unknown; color?: unknown; intensity?: unknown } | null, index) => {
+    if (!light || typeof light !== 'object') {
+      throw new SceneValidationError(`extra light ${index} is not an object`);
+    }
+    if (typeof light.intensity !== 'number' || !Number.isFinite(light.intensity)) {
+      throw new SceneValidationError(`extra light ${index} intensity must be finite, got ${String(light.intensity)}`);
+    }
+    position.set(assertFiniteVec3(light.position, `extra light ${index} position`), index * 3);
+    color.set(assertFiniteVec3(light.color, `extra light ${index} color`), index * 3);
+    intensity[index] = light.intensity;
+  });
+  return { position, color, intensity, count: extras.length };
 }

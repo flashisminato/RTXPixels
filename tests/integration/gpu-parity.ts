@@ -19,11 +19,20 @@ export function checkGPUParity() {
   try {
     const extension = renderer.gl.getExtension('WEBGL_debug_renderer_info');
     const backend = extension ? String(renderer.gl.getParameter(extension.UNMASKED_RENDERER_WEBGL)) : 'unavailable';
-    for (let scenario = 0; scenario < 3; scenario++) {
+    for (let scenario = 0; scenario < 4; scenario++) {
       if (scenario === 1) store.dispatch({ type: 'light-x', value: 4 });
       if (scenario === 2) {
         store.dispatch({ type: 'target-x', value: -2.8 });
         store.dispatch({ type: 'camera-yaw', value: 15 });
+      }
+      if (scenario === 3) {
+        // Four lights: every extra light adds its own shadow-checked term on both paths.
+        store.dispatch({ type: 'light-add' });
+        store.dispatch({ type: 'light-add' });
+        store.dispatch({ type: 'light-add' });
+        store.dispatch({ type: 'light-move', index: 2, axis: 'y', value: 2.2 });
+        store.dispatch({ type: 'light-intensity', index: 1, value: 150 });
+        store.dispatch({ type: 'light-move', index: 0, axis: 'z', value: 3 });
       }
       for (const [cssWidth, cssHeight] of [[320, 180], [240, 240], [333, 187]]) {
         canvas.style.width = `${cssWidth}px`;
