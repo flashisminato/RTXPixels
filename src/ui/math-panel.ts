@@ -89,7 +89,7 @@ type Block =
   | { kind: 'result'; text: Prose; interpretation: Prose }
   | { kind: 'check'; error: number | null; what: Prose };
 
-type SectionParts = { title: string; purpose: Prose; figure?: SVGSVGElement; caption?: Prose; blocks: Block[] };
+type SectionParts = { title: string; purpose: Prose; figure?: SVGSVGElement; caption?: Prose; blocks: Block[]; source?: string };
 
 /**
  * Which derivations the reader has opened, per chapter container and section
@@ -130,6 +130,12 @@ class Chapter {
     for (const block of parts.blocks) {
       const node = this.block(block);
       if (node) box.append(node);
+    }
+    if (parts.source) {
+      // Every computation links to the code that performs it (chapter 4).
+      const link = element('a', null, `Implementation: §${parts.source.replace('listing-', '').replace('-', '.')} ↓`);
+      link.href = `#${parts.source}`;
+      box.append(element('p', 'impl-link', link));
     }
     this.nodes.push(box);
   }
@@ -201,6 +207,7 @@ function pixelSection(ch: Chapter, story: MathStory): void {
   const ndcY = (): Element => row(mn('1'), minus(), frac(row(mn('2'), paren(row(mi('y'), plus(), half()))), mi('H')));
   const across = dot(p.direction, b.right), upward = dot(p.direction, b.up);
   ch.add({
+    source: 'listing-4-1',
     title: 'From a pixel to a ray',
     purpose: ['Each pixel defines one ray. Its center is carried onto a sensor one unit in front of the camera ', V('O'), '; the unit direction ', V('D'), ' through that point is the ray we follow.'],
     figure: pixelToRayFigure(p),
@@ -288,6 +295,7 @@ function hitSection(ch: Chapter, hit: HitStep, afterBounce: boolean): void {
   }
   blocks.push({ kind: 'check', error: hit.tError, what: ['distance ', S('t')] });
   ch.add({
+    source: 'listing-4-2',
     title: afterBounce ? `The bounced ray meets the ${hit.name}` : `The ray meets the ${hit.name}`,
     purpose: afterBounce
       ? ['The same nearest-surface search runs again from the bounce point, along ', V('R'), '. Here ', V('O'), ' is the bounce point and ', V('D'), ' is ', V('R'), '.']
@@ -304,6 +312,7 @@ function reflectSection(ch: Chapter, r: ReflectStep): void {
   const perpPart = (): Element => row(paren(dotted(v('D'), v('N'))), v('N'));
   const turn = deg(dot(r.incoming, r.outgoing));
   ch.add({
+    source: 'listing-4-3',
     title: 'The mirror bounce',
     purpose: ['A perfect mirror keeps the part of ', V('D'), ' along the surface and reverses the part along the normal ', V('N'), '. The color comes from wherever the bounced ray ', V('R'), ' goes next.'],
     figure: reflectionFigure(r),
@@ -337,6 +346,7 @@ function shadeSection(ch: Chapter, sh: ShadeStep): void {
       'Only the ambient term ', X(mi('a'), v('\u03c1')), ' remains, which is why this point is dark.']
     : ['The light arrives ', X(degrees(sh.phiDeg)), ' from the normal, so it contributes ', X(fn('cos', mi('\u03c6')), eq(), num(sh.nDotL, 3)), ' of its full strength, divided by ', X(sq(mi('d')), eq(), num(sh.distanceSquared, 2)), '.'];
   ch.add({
+    source: 'listing-4-3',
     title: `Is the light visible? Shading the ${sh.surface.name}`,
     purpose: ['A shadow ray goes from the surface toward the single point light. If anything blocks it, only the small ambient term remains.'],
     figure: shadingFigure(sh),
@@ -428,6 +438,7 @@ function displaySection(ch: Chapter, story: MathStory): void {
   if (d.mode === 'beauty') numbers.push(math('tone mapped', prime(v('c')), eq(), tuple(d.toneMapped!, 4)));
   numbers.push(math('encoded', prime(v('c'), d.mode === 'hit' ? '' : '\u2033'), eq(), tuple(d.encoded, 4)));
   ch.add({
+    source: 'listing-4-4',
     title: 'From light to a screen color',
     purpose: d.mode === 'beauty'
       ? ['Light values can exceed 1, so each channel is compressed, encoded for the screen, then rounded to an 8-bit number.']

@@ -4,6 +4,7 @@ import { CONTROL_RANGES } from '../scene/preset.ts';
 import { createDiagram } from './diagram.ts';
 import { SCHEMATIC_NOTE, buildExplanation } from './explain.ts';
 import { renderMathPanel } from './math-panel.ts';
+import { buildSourceChapter } from './source-view.ts';
 import { normalizedPoint, snapToStep, stepSelection } from './selection.ts';
 import '../styles/main.css';
 
@@ -217,13 +218,20 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   mathLead.textContent = 'The same calculation, written out as equations, for the pixel you selected. Every figure and number is recomputed from the scene above.';
   mathematics.append(mathLead, math);
 
-  // ---- Chapter 4: limits and credits.
-  const colophon = chapter('ch-4', '4', 'Limits and credits');
+  // ---- Chapter 4: the implementation, as it runs.
+  const implementation = chapter('ch-4', '4', 'Implementation');
+  const implLead = document.createElement('p');
+  implLead.className = 'chapter-lead';
+  implLead.textContent = 'The same mathematics is implemented twice: a CPU reference tracer in TypeScript, which produces every number in chapters 2 and 3, and the GPU shader in GLSL, which draws Figure 1.1. Both are shown exactly as they run, extracted from the source, not copied. The project’s browser tests check that the two agree pixel by pixel.';
+  implementation.append(implLead, ...buildSourceChapter());
+
+  // ---- Chapter 5: limits and credits.
+  const colophon = chapter('ch-5', '5', 'Limits and credits');
   colophon.append(footer);
 
   const doc = document.createElement('main');
   doc.className = 'doc';
-  const chapters = [picture, follow, mathematics, colophon];
+  const chapters = [picture, follow, mathematics, implementation, colophon];
   doc.append(...chapters);
   const toc = tableOfContents(chapters);
   shell.append(header, toc.nav, doc, record);

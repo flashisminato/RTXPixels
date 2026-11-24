@@ -85,8 +85,8 @@ test('document structure: numbered chapters, index with scroll-spy, numbered fig
     equations: [...document.querySelectorAll('.eq-no')].map(e => e.textContent),
     checks: [...document.querySelectorAll('.math-check')].map(c => c.className),
   }));
-  assert.deepEqual(s.chapters, ['1The picture', '2Follow one pixel', '3The mathematics', '4Limits and credits']);
-  assert.deepEqual(s.toc, ['#ch-1', '#ch-2', '#ch-3', '#ch-4']);
+  assert.deepEqual(s.chapters, ['1The picture', '2Follow one pixel', '3The mathematics', '4Implementation', '5Limits and credits']);
+  assert.deepEqual(s.toc, ['#ch-1', '#ch-2', '#ch-3', '#ch-4', '#ch-5']);
   assert.ok(s.figures.includes('Figure 1.1.') && s.figures.includes('Figure 2.1.') && s.figures.includes('Figure 3.1.'), s.figures.join(' '));
   assert.equal(s.equations[0], '(3.1)');
   assert.ok(s.equations.every((e, i) => e === `(3.${i + 1})`), 'equations are numbered consecutively');
@@ -192,5 +192,25 @@ test('linked highlighting: an equation term and its figure element light up toge
   await section.locator('svg [data-ref="N"] text').first().hover(); // a reader points at the label
   const fromFigure = await section.evaluate(s => [...s.querySelectorAll('math [data-ref="N"]')].some(n => n.classList.contains('is-linked')));
   assert.ok(fromFigure, 'hovering the figure element links the equation term');
+  await context.close();
+});
+
+test('chapter 4 shows the real CPU and GPU source, linked from chapter 3, without a second <pre>', async () => {
+  const { page, context, errors } = await open();
+  await page.getByRole('button', { name: 'Inspect a computed mirror example' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('.impl-link a').length > 0);
+  const r = await page.evaluate(() => ({
+    listings: [...document.querySelectorAll('code.listing')].map(c => c.textContent),
+    pres: document.querySelectorAll('pre').length,
+    links: [...document.querySelectorAll('.impl-link a')].map(a => a.getAttribute('href')),
+    targets: [...document.querySelectorAll('.source-step')].map(s => s.id),
+  }));
+  assert.equal(r.listings.length, 8, 'four operations, CPU and GPU each');
+  assert.ok(r.listings.every(t => !t.includes('not found in')), 'every named function was extracted from the real source');
+  assert.ok(r.listings.some(t => t.includes('export function nearestHit(scene: Scene')), 'the CPU listing is the tracer source');
+  assert.ok(r.listings.some(t => /Hit intersectSphere\(vec3 origin/.test(t)), 'the GPU listing is the compiled GLSL');
+  assert.equal(r.pres, 1, 'listings use <code class="listing">, never <pre>');
+  assert.ok(r.links.length >= 4 && r.links.every(h => r.targets.includes(h.slice(1))), 'every implementation link has a target');
+  assert.deepEqual(errors, []);
   await context.close();
 });
