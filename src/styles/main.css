@@ -309,3 +309,25 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 .swatch-chip { width: 100%; height: 100%; border-radius: 50%; border: 1px solid var(--rule); box-shadow: inset 0 0 0 3px var(--paper); }
 .swatch input:checked + .swatch-chip { border: 2px solid var(--ink); }
 .swatch input:focus-visible + .swatch-chip { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* The colored ball's x, y and z sliders take the gizmo's colours. */
+.xyz { margin: 0; }
+.xyz .axis-x .control-head label { color: #d52232; }
+.xyz .axis-y .control-head label { color: #21944a; }
+.xyz .axis-z .control-head label { color: #2563d6; }
+.xyz .axis-x input[type='range'] { accent-color: #d52232; }
+.xyz .axis-y input[type='range'] { accent-color: #21944a; }
+.xyz .axis-z input[type='range'] { accent-color: #2563d6; }
+/* Ball cards: compact finish choice. */
+.compact-choices { margin: var(--s2) 0 0; padding-top: var(--s2); }
+.compact-choices .choice { min-height: 32px; padding: 0; font-size: 14px; }
+.compact-choices .choice-hint:empty { display: none; }
+.ball-card .swatch { width: 28px; height: 28px; }
+.add-ball {
+  min-height: 120px; border: 1px dashed var(--construction); border-radius: 2px; background: transparent;
+  cursor: pointer; font-size: 15px; font-weight: 500; color: var(--ink); touch-action: manipulation;
+}
+.add-ball:hover { background: var(--paper-2); }
+.add-ball:disabled { cursor: default; color: var(--graphite); background: var(--paper-2); border-style: solid; }
+.ray-diagram [data-drag^='axis-'] { cursor: grab; }
+.ray-diagram [data-drag^='object:'][aria-pressed='true'] ellipse:last-of-type { stroke-width: 2.4; }

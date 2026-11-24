@@ -2,6 +2,7 @@
 // They do not verify the GPU renderer.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { initialView } from '../../src/state/index.ts';
 import type { TraceEvent, Vec3, ViewState } from '../../src/contracts.ts';
 import { findMirrorExample, makeFrame } from '../../src/core/frame.ts';
 import { reflect } from '../../src/core/vector.ts';
@@ -258,4 +259,21 @@ test('every figure element carries the step of the event that produced it, in or
   assert.equal(events[firstPath.step!].kind, 'hit');
   assert.equal(events[shadow.step!].kind, 'shadow');
   assert.ok(firstPath.step! < shadow.step!, 'the camera ray comes before the shadow check');
+});
+
+test('a mirror pixel whose bounce escapes to the sky is not called a miss', () => {
+  const view = initialView();
+  const hit = { objectId: 'mirror', materialIndex: 0, t: 6, point: [0, 1.5, 0.6] as Vec3, outwardNormal: [0, 0.5, -0.87] as Vec3, normal: [0, 0.5, -0.87] as Vec3, frontFace: true };
+  const inspection = {
+    sceneVersion: view.sceneVersion, pixel: { x: 10, y: 5, width: 64, height: 36 },
+    ray: { origin: [0, 2.4, -5.5] as Vec3, direction: [0, -0.1, 0.99] as Vec3 },
+    result: { linearColor: [0.1, 0.1, 0.2] as Vec3, events: [
+      { kind: 'hit' as const, from: [0, 2.4, -5.5] as Vec3, incoming: [0, -0.1, 0.99] as Vec3, hit },
+      { kind: 'reflect' as const, point: hit.point, incoming: [0, -0.1, 0.99] as Vec3, outgoing: [0, 0.8, -0.6] as Vec3, normal: hit.normal },
+      { kind: 'end' as const, reason: 'sky' as const, from: hit.point, direction: [0, 0.8, -0.6] as Vec3 },
+    ] },
+  };
+  const { summary, answer } = buildExplanation({ ...view, inspection });
+  assert.doesNotMatch(summary, /misses every object/);
+  assert.match(answer, /center sphere, bounces, and the bounced ray escapes to the sky/);
 });

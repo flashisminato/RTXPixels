@@ -1,5 +1,5 @@
 import type { Action, Inspection, Scene, ViewState } from '../contracts.ts';
-import { createPreset, initialControls, newExtraLight } from '../scene/preset.ts';
+import { BALL_BOUNDS, createPreset, initialControls, newBall, newExtraLight } from '../scene/preset.ts';
 import { validateControls, validateScene } from './validation.ts';
 
 export { validateControls, validateScene } from './validation.ts';
@@ -35,7 +35,15 @@ export function createStore(initialScene: Scene = createPreset()) {
     },
     dispatch(action: Action): void {
       if (!action || typeof action !== 'object') throw new TypeError('Action must be an object.');
-      const controls = { ...view.controls, extraLights: view.controls.extraLights.map(light => ({ ...light })) };
+      const controls = { ...view.controls, extraLights: view.controls.extraLights.map(light => ({ ...light })), balls: view.controls.balls.map(ball => ({ ...ball })) };
+      const ballIndex = (index: unknown): number => {
+        if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index >= controls.balls.length) throw new RangeError('Ball index is out of range.');
+        return index;
+      };
+      const axisOf = (axis: unknown): 'x' | 'y' | 'z' => {
+        if (axis !== 'x' && axis !== 'y' && axis !== 'z') throw new RangeError('Unsupported axis.');
+        return axis;
+      };
       const lightIndex = (index: unknown): number => {
         if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index > controls.extraLights.length) {
           throw new RangeError('Light index is out of range.');
@@ -44,6 +52,34 @@ export function createStore(initialScene: Scene = createPreset()) {
       };
       switch (action.type) {
         case 'target-x': controls.targetX = action.value; break;
+        case 'target-move': {
+          const axis = axisOf(action.axis);
+          if (axis === 'x') controls.targetX = action.value;
+          else if (axis === 'y') controls.targetY = action.value;
+          else controls.targetZ = action.value;
+          break;
+        }
+        case 'ball-add': {
+          const ball = newBall(controls.balls);
+          if (!ball) throw new RangeError('The room already has the maximum number of balls.');
+          controls.balls.push(ball);
+          break;
+        }
+        case 'ball-remove': controls.balls.splice(ballIndex(action.index), 1); break;
+        case 'ball-color': controls.balls[ballIndex(action.index)].color = action.value; break;
+        case 'ball-mode': controls.balls[ballIndex(action.index)].mode = action.value; break;
+        case 'ball-move': controls.balls[ballIndex(action.index)][axisOf(action.axis)] = action.value; break;
+        case 'balls-step': {
+          if (!Array.isArray(action.positions) || action.positions.length !== controls.balls.length) throw new RangeError('One position per ball is required.');
+          action.positions.forEach((p, i) => {
+            if (!Array.isArray(p) || p.length !== 3) throw new RangeError('A ball position needs three numbers.');
+            // Physics may land a hair outside the bounds; keep the stored value valid.
+            controls.balls[i].x = Math.min(BALL_BOUNDS.x.max, Math.max(BALL_BOUNDS.x.min, p[0]));
+            controls.balls[i].y = Math.min(BALL_BOUNDS.y.max, Math.max(BALL_BOUNDS.y.min, p[1]));
+            controls.balls[i].z = Math.min(BALL_BOUNDS.z.max, Math.max(BALL_BOUNDS.z.min, p[2]));
+          });
+          break;
+        }
         case 'light-x': controls.lightX = action.value; break;
         case 'light-move': {
           const index = lightIndex(action.index);

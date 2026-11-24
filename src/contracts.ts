@@ -61,6 +61,9 @@ export type Inspection = {
   pixel: { x: number; y: number; width: number; height: number };
   ray: Ray; result: TraceResult;
 };
+/** An added ball: its label number (Ball n), position, paint (index into BALL_COLORS) and finish. */
+export type BallControl = { n: number; x: number; y: number; z: number; color: number; mode: Mode };
+export type Axis = 'x' | 'y' | 'z';
 /** One extra light's controls. `tint` picks its color from EXTRA_LIGHT_TINTS. */
 export type LightControl = { x: number; y: number; z: number; intensity: number; tint: number };
 export type LightAxis = 'x' | 'y' | 'z';
@@ -72,6 +75,9 @@ export type Controls = {
   extraLights: LightControl[];
   /** The back wall: an index into WALL_COLORS, and its finish (paint or mirror). */
   wallColor: number; wallMode: Mode;
+  /** The colored ball's height and depth (its sideways position is targetX). */
+  targetY: number; targetZ: number;
+  balls: BallControl[];
 };
 export type Action =
   | { type: 'target-x'; value: number }
@@ -83,6 +89,14 @@ export type Action =
   | { type: 'light-remove'; index: number }
   | { type: 'camera-yaw'; value: number }
   | { type: 'mirror-mode'; value: Mode }
+  | { type: 'target-move'; axis: Axis; value: number }
+  | { type: 'ball-add' }
+  | { type: 'ball-remove'; index: number }
+  | { type: 'ball-color'; index: number; value: number }
+  | { type: 'ball-mode'; index: number; value: Mode }
+  | { type: 'ball-move'; index: number; axis: Axis; value: number }
+  /** One physics frame: every added ball's new position, in order. */
+  | { type: 'balls-step'; positions: Vec3[] }
   | { type: 'wall-color'; value: number }
   | { type: 'wall-mode'; value: Mode }
   | { type: 'redirects'; value: number }
