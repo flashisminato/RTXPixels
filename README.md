@@ -1,6 +1,6 @@
 # How does the RTX work? A real-time ray-tracing interactive environment with math illustration using a WebGL renderer
 
-The app renders the original room through **AI 1's real WebGL2 renderer**, capped at 640×360, with spheres, planes, a perfect mirror, direct matte lighting and hard shadows. A cancelable **160×90 CPU fallback** handles unavailable or lost graphics contexts. Both buffers fit the host aspect. Click the image to inspect actual CPU ray events for the same frame, select a computed mirror example, or reset. No API keys or runtime services.
+The app renders the original room through **WebGL2 renderer**, capped at 640×360, with spheres, planes, a perfect mirror, direct matte lighting and hard shadows. A cancelable **160×90 CPU fallback** handles unavailable or lost graphics contexts. Both buffers fit the host aspect. Click the image to inspect actual CPU ray events for the same frame, select a computed mirror example, or reset. No API keys or runtime services.
 
 **Not a finished team release:** AI 2's full controls/explanatory diagram has not arrived; its minimal development harness is preserved. The renderer is no longer a stub. Contract **v1** remains unchanged: no glass.
 
@@ -13,13 +13,13 @@ npm ci
 npm run dev
 npm run check       # all-source typecheck + Node core/integration tests + build
 npm run preview
-npm run test:renderer # AI 1's browser-only GPU suite and production smoke
+npm run test:renderer # browser-only GPU suite and production smoke
 npm run test:browser  # combined application, CPU/GPU parity and fallback
 ```
 
 `test:browser` builds fresh output and uses installed Google Chrome through `playwright-core`. For another installation, set `CHROME_PATH` to its executable. No browser is downloaded automatically. The browser suite starts/stops its own local servers and isolated browser contexts. It is separate from CI's portable math/build gate.
 
-Latest verification: **31 numerical/state/integration tests, 26 renderer checks, 11 renderer production-smoke checks and 10 combined-browser tests passed**, plus typecheck and build. The combined suite includes 630 sampled CPU/GPU pixel/diagnostic comparisons at DPR 1 and 2 on SwiftShader. AI 1's standalone renderer suite also passed on ANGLE Metal / Apple M1. See [verification](docs/verification.md) for scope and limits. Node and browser-only renderer tests have separate commands; both are typechecked. Browser selectors must be updated when AI 2's real interface is integrated.
+Latest verification: **31 numerical/state/integration tests, 26 renderer checks, 11 renderer production-smoke checks and 10 combined-browser tests passed**, plus typecheck and build. The combined suite includes 630 sampled CPU/GPU pixel/diagnostic comparisons at DPR 1 and 2 on SwiftShader. AI 1's standalone renderer suite also passed on ANGLE Metal / Apple M1. See [verification](docs/verification.md) for scope and limits. Node and browser-only renderer tests have separate commands; both are type-checked. Update browser selectors when the real interface is integrated.
 
 ## Structure
 
@@ -29,8 +29,8 @@ Latest verification: **31 numerical/state/integration tests, 26 renderer checks,
 - `src/state/`: validated actions, immutable snapshots and monotonic scene versions.
 - `src/fallback/`: cancelable, event-free bulk CPU rendering.
 - `src/main.ts`: canvas ownership, scheduling, resize, inspection and fallback orchestration.
-- `src/render/`: AI 1's real WebGL2 implementation, preserved unchanged from the existing main branch.
-- `src/ui/`, `src/styles/`: AI 2 ownership; currently a minimal development harness.
+- `src/render/`: WebGL2 implementation, preserved unchanged from the existing main branch.
+- `src/ui/`, `src/styles/`: A minimal development harness.
 
 Read [architecture](docs/architecture.md), [the shared contract](docs/contract-v1.md), [ownership](docs/ownership.md), and [integration notes](docs/integration-v1.md).
 
@@ -38,7 +38,7 @@ Read [architecture](docs/architecture.md), [the shared contract](docs/contract-v
 
 Team repository: [flashisminato/Ray-Tracking](https://github.com/flashisminato/Ray-Tracking).
 
-The merge joins the existing renderer history at `2746fb1` and AI 3's `integration/core` checkpoint at `6bc55c3`, preserving both histories. It was prepared in a separate `integration/combined` checkout. The original `bootstrap-v1` and `core-v1` tags remain historical checkpoints, not tags for the combined app.
+The merge joins the existing renderer history at `2746fb1` and the `integration/core` checkpoint at `6bc55c3`, preserving both histories. It was prepared in a separate `integration/combined` checkout. The original `bootstrap-v1` and `core-v1` tags remain historical checkpoints, not tags for the combined app.
 
 Both feature accounts should fetch and update their feature branches from the same integrated `main` commit before their next handoff. Do not overwrite an entire checkout or merge an old renderer stub over real code. Only AI 3 integrates reviewed owned-file changes into main. Never use the reference repository as a write remote.
 
