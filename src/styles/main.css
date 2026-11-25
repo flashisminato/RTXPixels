@@ -179,10 +179,7 @@ summary { min-height: 44px; display: flex; align-items: center; cursor: pointer;
 .events li::before { content: counter(step); position: absolute; left: 0; top: var(--s3); font-family: var(--font-math); font-size: 19px; line-height: 1.3; color: var(--graphite); }
 .events p { margin: 0; color: var(--ink); overflow-wrap: anywhere; font-size: 16px; }
 .math { margin-top: var(--s2); }
-.credits { margin: 0; }
 .math > summary { font-size: 17px; }
-.credits a { color: var(--ink); text-underline-offset: 3px; text-decoration-thickness: 1px; }
-.credits a:hover { color: var(--graphite); }
 .limits { margin: 0 0 var(--s3); max-width: 46rem; }
 
 /* ---- "Explain the math": figures and MathML --------------------------------
