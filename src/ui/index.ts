@@ -458,7 +458,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
   const mathematics = chapter('ch-3', '3', 'The mathematics');
   const mathLead = document.createElement('p');
   mathLead.className = 'chapter-lead';
-  mathLead.textContent = 'The same calculation, written out as equations, for the pixel you selected. Every figure and number is recomputed from the scene above.';
+  mathLead.textContent = 'The math equations behind the pixel you clicked.';
   mathematics.append(mathLead, math);
 
   const doc = document.createElement('main');
