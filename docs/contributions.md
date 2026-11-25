@@ -9,10 +9,6 @@ No upstream source code or functions are copied or adapted in this repository. T
 
 For any future adaptation, record the source URL, exact commit, file and function, the nature of the adaptation, and where the notice lives. Preserve the **complete upstream MIT text** and its original `Copyright (c) 2025 Kia` notice. Inspiration-only credit is not a substitute for the license when code is copied.
 
-## How the work was made
-
-Parts of the code and documentation were written with AI assistance and reviewed by the team, who remain responsible for review, eligibility, licensing decisions and the final submission.
-
 ## Honest claims
 
 The contribution is the interactive explanation and the original scene, not ray tracing itself, which is an established technique. This is not a pixel-for-pixel reproduction of the reference app. CPU/GPU agreement is checked by sampled pixel comparisons in headless Chrome, not on every GPU and driver. Glass, soft shadows and indirect light are not computed.
