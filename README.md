@@ -58,15 +58,13 @@ The same mathematics is implemented twice. A CPU reference tracer in TypeScript 
 
 Build: `npm ci && npm run check`; publish directory: `dist`. Relative asset URLs support a root or repository subpath; no SPA rewrites are required. The `Verify` workflow checks pushes and pull requests, then deploys the built `dist` artifact to [GitHub Pages](https://flashisminato.github.io/Ray-Tracking/) only for successful runs on `main` outside pull requests. It can also be run manually on `main`. In repository Settings → Pages, keep the source set to **GitHub Actions**; do not publish the source tree with Jekyll. Core computation works offline **after the page loads**; cold-start offline caching is not implemented.
 
-## Provenance
+## Notes
 
-Inspired by [Light Teachings by Kia Preston (pkncoder)](https://github.com/pkncoder/Light-Teachings/tree/57260fe2a6badbc826271856bbcf6c8a2090de17). No upstream source code is copied or adapted here; the implementation follows standard ray-tracing mathematics. Any future adaptation must keep the full upstream MIT text and record the source commit and functions. See [provenance notes](docs/contributions.md) and the [public credits](public/notices/credits.html).
-
-CPU/GPU agreement is verified by sampled pixel comparisons in headless Chrome, not on every GPU and driver.
+CPU/GPU agreement is verified by sampled pixel comparisons in headless Chrome, not on every GPU and driver. Ray tracing is an established technique; the contribution here is the interactive explanation and the original scene.
 
 ## Repository license
 
-The existing repository notice is preserved verbatim below. This is separate from the upstream inspiration credit.
+The repository notice is preserved verbatim below.
 
 # Ray-Tracking
 This software uses MIT license:

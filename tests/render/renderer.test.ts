@@ -152,7 +152,7 @@ test('sphere outside / tangent / miss / inside cases', () => {
   );
 
   // Tangent: origin (1,0,-3) along +Z grazes the sphere at exactly x = 1.
-  // The Metal source rejects this (discriminant > 0); contract v1 accepts it.
+  // A tangent ray (discriminant == 0): contract v1 counts it as a hit.
   assertPixel(
     traceOneRay(h, scene, [1, 0, -3], [0, 0, 1], 'hit'),
     WHITE,

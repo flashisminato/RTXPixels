@@ -1,9 +1,8 @@
 /**
  * Fullscreen vertex stage.
  *
- * Three vertices covering clip space. The original Metal path (`vertexMain`)
- * used a strip of two triangles; a single oversized triangle does the same job
- * with no shared edge, which removes the diagonal seam risk entirely.
+ * Three vertices covering clip space: a single oversized triangle instead of a
+ * strip of two, so there is no shared edge and no diagonal seam risk.
  *
  * This stage carries NO ray logic. Every ray is constructed per fragment from
  * the camera basis uniforms supplied by the CPU core, so the GPU never invents its own

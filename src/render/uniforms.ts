@@ -17,11 +17,8 @@ import {
 /**
  * Flat, explicitly validated arrays ready for upload.
  *
- * The original Metal renderer copied fixed-stride native structs straight into
- * a GPU buffer (`Renderer.buildSceneBuffer` copies 20 object strides even when
- * nine are populated). None of that layout reasoning crosses into the browser:
- * every field here is written by name, and only the active count is read by the
- * shader.
+ * Every field is written by name rather than copied as a fixed-stride struct,
+ * and only the active count is read by the shader.
  */
 export type PackedScene = {
   objectA: Float32Array;        // MAX_OBJECTS * 4

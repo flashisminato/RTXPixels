@@ -463,7 +463,7 @@ export function mountUI(root: HTMLElement, actions: UIActions): UIHandle {
 
   const doc = document.createElement('main');
   doc.className = 'doc';
-  // The implementation and the limits and credits live in the README.
+  // The implementation notes and limits live in the README.
   const chapters = [picture, follow, mathematics];
   doc.append(...chapters);
   const toc = tableOfContents(chapters);

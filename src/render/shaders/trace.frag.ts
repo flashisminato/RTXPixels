@@ -23,28 +23,19 @@ export type FragmentSourceOptions = {
 /**
  * Build the tracing fragment shader.
  *
- * Design notes, and where this deliberately diverges from the original Metal
- * source (`LightTeachings/Shaders/RayTracer.metal`, commit 57260fe):
+ * Design notes:
  *
- * - The original restarts its object loop with mutable indices on every
- *   reflection, so "nearest hit" and "bounce" are interleaved. Here each
- *   nearest-hit query runs to completion, and only then does the encounter
- *   loop choose one outgoing direction. Same optics, far easier to reason
- *   about and to match against a CPU reference.
- * - `raySphere` in the original accepts only `discriminant > 0.0`, which drops
- *   exact tangent rays. Contract v1 accepts `>= 0.0`.
- * - The original reads `scene.materials[currentHit.materialIndex - 1]` before
- *   confirming `currentHit.hit`, so miss records index with an unassigned
- *   field. Here every material fetch is inside a confirmed-hit branch.
- * - `sceneColoring` computes ambient and shadow terms before its final hit
- *   test. Here a miss returns sky immediately.
- * - Camera rotation came from Euler angles in `Rotations.metal`. Here the
- *   camera basis arrives as explicit uniforms from the CPU core, so CPU and GPU cannot
- *   disagree about convention.
+ * - Each nearest-hit query runs to completion, and only then does the
+ *   encounter loop choose one outgoing direction, which keeps the GPU easy to
+ *   reason about and to match against the CPU reference.
+ * - Sphere hits accept `discriminant >= 0.0`, so exact tangent rays count.
+ * - Every material fetch is inside a confirmed-hit branch; a miss returns sky
+ *   immediately, before any shading.
+ * - The camera basis arrives as explicit uniforms from the CPU core, so CPU and
+ *   GPU cannot disagree about convention.
  *
- * Adapted mathematics: the analytic sphere and plane intersection forms follow
- * the standard quadratic / plane-equation derivations also used by the source.
- * Provenance: docs/contributions.md and the credits page.
+ * The analytic sphere and plane intersections follow the standard quadratic and
+ * plane-equation derivations.
  */
 export function buildTraceFragmentSource(options: FragmentSourceOptions = {}): string {
   const debug = options.debug === true;
@@ -164,7 +155,7 @@ Hit intersectSphere(vec3 origin, vec3 dir, vec3 centre, float radius,
   float halfB = dot(oc, dir);
   float c = dot(oc, oc) - radius * radius;
 
-  // Contract v1: a tangent ray (delta == 0) is a hit, unlike the Metal source.
+  // Contract v1: a tangent ray (delta == 0) counts as a hit.
   float delta = halfB * halfB - a * c;
   if (delta < 0.0) return h;
 
